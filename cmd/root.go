@@ -27,7 +27,7 @@ It provides a simple interface to:
 		}
 		fmt.Println("SIM-CLI - iOS Simulator & Android Emulator Manager")
 		fmt.Printf("Version: %s\n", cmd.Version)
-		fmt.Println("Use 'sim-cli help' to see available commands")
+		fmt.Println("Use 'sim help' to see available commands")
 	},
 }
 
