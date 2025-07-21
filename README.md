@@ -25,7 +25,7 @@ SIM-CLI is a cross-platform command-line tool that provides a unified interface 
 ```bash
 git clone https://github.com/annurdien/sim-cli.git
 cd sim-cli
-go build -o sim-cli
+go build -o sim
 ```
 
 ## Usage
@@ -33,7 +33,7 @@ go build -o sim-cli
 ### List Available Devices
 
 ```bash
-sim-cli list
+sim list
 ```
 
 Example output:
@@ -49,45 +49,45 @@ Android Emulator     Pixel_7_API_34                         Shutdown        offl
 
 ```bash
 # Start by name
-sim-cli start "iPhone 15 Pro"
+sim start "iPhone 15 Pro"
 
 # Start by UDID
-sim-cli start A1B2C3D4-E5F6-G7H8-I9J0-K1L2M3N4O5P6
+sim start A1B2C3D4-E5F6-G7H8-I9J0-K1L2M3N4O5P6
 ```
 
 ### Stop a Device
 
 ```bash
-sim-cli stop "iPhone 15 Pro"
+sim stop "iPhone 15 Pro"
 ```
 
 ### Restart a Device
 
 ```bash
-sim-cli restart "Pixel_7_API_34"
+sim restart "Pixel_7_API_34"
 ```
 
 ### Take a Screenshot
 
 ```bash
 # Auto-generated filename
-sim-cli screenshot "iPhone 15 Pro"
+sim screenshot "iPhone 15 Pro"
 
 # Custom filename
-sim-cli screenshot "iPhone 15 Pro" my_screenshot.png
+sim screenshot "iPhone 15 Pro" my_screenshot.png
 ```
 
 ### Record Screen
 
 ```bash
 # Record until manually stopped (Ctrl+C)
-sim-cli record "iPhone 15 Pro"
+sim record "iPhone 15 Pro"
 
 # Record for specific duration (in seconds)
-sim-cli record "iPhone 15 Pro" --duration 30
+sim record "iPhone 15 Pro" --duration 30
 
 # Custom filename
-sim-cli record "iPhone 15 Pro" my_recording.mp4 --duration 60
+sim record "iPhone 15 Pro" my_recording.mp4 --duration 60
 ```
 
 ## Commands Reference
@@ -110,7 +110,7 @@ Devices can be identified by:
 - **Name**: Exact device name (e.g., "iPhone 15 Pro")
 - **UDID**: Unique device identifier
 
-Use `sim-cli list` to see available devices and their identifiers.
+Use `sim list` to see available devices and their identifiers.
 
 ## Platform Support
 

@@ -5,18 +5,18 @@ all: build
 
 # Build the application
 build:
-	go build -o sim-cli
+	go build -o sim
 
 # Build for multiple platforms
 build-all:
-	GOOS=darwin GOARCH=amd64 go build -o dist/sim-cli-darwin-amd64
-	GOOS=darwin GOARCH=arm64 go build -o dist/sim-cli-darwin-arm64
-	GOOS=linux GOARCH=amd64 go build -o dist/sim-cli-linux-amd64
-	GOOS=windows GOARCH=amd64 go build -o dist/sim-cli-windows-amd64.exe
+	GOOS=darwin GOARCH=amd64 go build -o dist/sim-darwin-amd64
+	GOOS=darwin GOARCH=arm64 go build -o dist/sim-darwin-arm64
+	GOOS=linux GOARCH=amd64 go build -o dist/sim-linux-amd64
+	GOOS=windows GOARCH=amd64 go build -o dist/sim-windows-amd64.exe
 
 # Clean build artifacts
 clean:
-	rm -f sim-cli
+	rm -f sim
 	rm -rf dist/
 
 # Install dependencies
@@ -30,7 +30,7 @@ test:
 
 # Install to system (requires appropriate permissions)
 install: build
-	cp sim-cli /usr/local/bin/
+	cp sim /usr/local/bin/
 
 # Show help
 help:
