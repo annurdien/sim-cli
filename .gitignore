@@ -1,5 +1,7 @@
 # Binary
+sim
 sim-cli
+/sim
 /sim-cli
 
 # Build artifacts
