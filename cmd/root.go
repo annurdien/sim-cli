@@ -8,6 +8,16 @@ import (
 
 const version = "1.0.0"
 
+const asciiArt = `
+ ███████╗██╗███╗   ███╗      ██████╗██╗     ██╗
+ ██╔════╝██║████╗ ████║     ██╔════╝██║     ██║
+ ███████╗██║██╔████╔██║     ██║     ██║     ██║
+ ╚════██║██║██║╚██╔╝██║     ██║     ██║     ██║
+ ███████║██║██║ ╚═╝ ██║     ╚██████╗███████╗██║
+ ╚══════╝╚═╝╚═╝     ╚═╝      ╚═════╝╚══════╝╚═╝
+                                                    
+`
+
 var rootCmd = &cobra.Command{
 	Use:     "sim",
 	Version: version,
@@ -25,8 +35,9 @@ It provides a simple interface to:
 			fmt.Printf("SIM-CLI version %s\n", cmd.Version)
 			return
 		}
-		fmt.Println("SIM-CLI - iOS Simulator & Android Emulator Manager")
-		fmt.Printf("Version: %s\n", cmd.Version)
+		fmt.Print(asciiArt)
+		fmt.Print("iOS Simulator & Android Emulator Manager\n")
+		fmt.Printf("Version: %s\n\n", cmd.Version)
 		fmt.Println("Use 'sim help' to see available commands")
 	},
 }
