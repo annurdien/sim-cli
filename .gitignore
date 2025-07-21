@@ -1,0 +1,39 @@
+# Binary
+sim-cli
+/sim-cli
+
+# Build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Dependency directories
+vendor/
+
+# Go workspace file
+go.work
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+
+# Screenshots and recordings
+screenshot_*.png
+recording_*.mp4
+
+# Temporary files
+/tmp/
