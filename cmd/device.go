@@ -10,10 +10,11 @@ import (
 )
 
 var startCmd = &cobra.Command{
-	Use:   "start [device-name-or-udid]",
-	Short: "Start an iOS simulator or Android emulator",
-	Long:  `Start a specific iOS simulator or Android emulator by name or UDID.`,
-	Args:  cobra.ExactArgs(1),
+	Use:     "start [device-name-or-udid]",
+	Aliases: []string{"s"},
+	Short:   "Start an iOS simulator or Android emulator",
+	Long:    `Start a specific iOS simulator or Android emulator by name or UDID.`,
+	Args:    cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		deviceID := args[0]
 
@@ -32,10 +33,11 @@ var startCmd = &cobra.Command{
 }
 
 var stopCmd = &cobra.Command{
-	Use:   "stop [device-name-or-udid]",
-	Short: "Stop a running iOS simulator or Android emulator",
-	Long:  `Stop a specific running iOS simulator or Android emulator by name or UDID.`,
-	Args:  cobra.ExactArgs(1),
+	Use:     "stop [device-name-or-udid]",
+	Aliases: []string{"st"},
+	Short:   "Stop a running iOS simulator or Android emulator",
+	Long:    `Stop a specific running iOS simulator or Android emulator by name or UDID.`,
+	Args:    cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		deviceID := args[0]
 
@@ -54,10 +56,11 @@ var stopCmd = &cobra.Command{
 }
 
 var shutdownCmd = &cobra.Command{
-	Use:   "shutdown [device-name-or-udid]",
-	Short: "Shutdown an iOS simulator or Android emulator",
-	Long:  `Shutdown a specific iOS simulator or Android emulator by name or UDID.`,
-	Args:  cobra.ExactArgs(1),
+	Use:     "shutdown [device-name-or-udid]",
+	Aliases: []string{"sd"},
+	Short:   "Shutdown an iOS simulator or Android emulator",
+	Long:    `Shutdown a specific iOS simulator or Android emulator by name or UDID.`,
+	Args:    cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		deviceID := args[0]
 
@@ -76,10 +79,11 @@ var shutdownCmd = &cobra.Command{
 }
 
 var restartCmd = &cobra.Command{
-	Use:   "restart [device-name-or-udid]",
-	Short: "Restart an iOS simulator or Android emulator",
-	Long:  `Restart a specific iOS simulator or Android emulator by name or UDID.`,
-	Args:  cobra.ExactArgs(1),
+	Use:     "restart [device-name-or-udid]",
+	Aliases: []string{"r"},
+	Short:   "Restart an iOS simulator or Android emulator",
+	Long:    `Restart a specific iOS simulator or Android emulator by name or UDID.`,
+	Args:    cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		deviceID := args[0]
 
@@ -94,6 +98,29 @@ var restartCmd = &cobra.Command{
 		}
 
 		fmt.Printf("Device '%s' not found or failed to restart\n", deviceID)
+	},
+}
+
+var deleteCmd = &cobra.Command{
+	Use:     "delete [device-name-or-udid]",
+	Aliases: []string{"d", "del"},
+	Short:   "Delete an iOS simulator or Android emulator",
+	Long:    `Delete a specific iOS simulator or Android emulator by name or UDID. This will permanently remove the device.`,
+	Args:    cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		deviceID := args[0]
+
+		if runtime.GOOS == "darwin" {
+			if deleteIOSSimulator(deviceID) {
+				return
+			}
+		}
+
+		if deleteAndroidEmulator(deviceID) {
+			return
+		}
+
+		fmt.Printf("Device '%s' not found or failed to delete\n", deviceID)
 	},
 }
 
@@ -212,6 +239,50 @@ func restartAndroidEmulator(deviceID string) bool {
 	return startAndroidEmulator(deviceID)
 }
 
+func deleteIOSSimulator(deviceID string) bool {
+	udid := findIOSSimulatorUDID(deviceID)
+	if udid == "" {
+		return false
+	}
+
+	fmt.Printf("Deleting iOS simulator '%s'...\n", deviceID)
+
+	// Shutdown the simulator if it's running
+	shutdownCmd := exec.Command("xcrun", "simctl", "shutdown", udid)
+	shutdownCmd.Run() // Ignore error if already shutdown
+
+	// Delete the simulator
+	cmd := exec.Command("xcrun", "simctl", "delete", udid)
+	if err := cmd.Run(); err != nil {
+		fmt.Printf("Error deleting iOS simulator: %v\n", err)
+		return false
+	}
+
+	fmt.Printf("iOS simulator '%s' deleted successfully\n", deviceID)
+	return true
+}
+
+func deleteAndroidEmulator(deviceID string) bool {
+	if !doesAndroidAVDExist(deviceID) {
+		return false
+	}
+
+	fmt.Printf("Deleting Android emulator '%s'...\n", deviceID)
+
+	// Stop the emulator if it's running
+	stopAndroidEmulator(deviceID)
+
+	// Delete the AVD
+	cmd := exec.Command("avdmanager", "delete", "avd", "-n", deviceID)
+	if err := cmd.Run(); err != nil {
+		fmt.Printf("Error deleting Android emulator: %v\n", err)
+		return false
+	}
+
+	fmt.Printf("Android emulator '%s' deleted successfully\n", deviceID)
+	return true
+}
+
 func findIOSSimulatorUDID(deviceID string) string {
 	if len(deviceID) == 36 && strings.Count(deviceID, "-") == 4 {
 		return deviceID
@@ -281,4 +352,5 @@ func init() {
 	rootCmd.AddCommand(stopCmd)
 	rootCmd.AddCommand(shutdownCmd)
 	rootCmd.AddCommand(restartCmd)
+	rootCmd.AddCommand(deleteCmd)
 }

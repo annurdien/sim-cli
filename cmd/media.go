@@ -12,10 +12,11 @@ import (
 )
 
 var screenshotCmd = &cobra.Command{
-	Use:   "screenshot [device-name-or-udid] [output-file]",
-	Short: "Take a screenshot of an iOS simulator or Android emulator",
-	Long:  `Take a screenshot of a running iOS simulator or Android emulator and save it to a file.`,
-	Args:  cobra.RangeArgs(1, 2),
+	Use:     "screenshot [device-name-or-udid] [output-file]",
+	Aliases: []string{"ss", "shot"},
+	Short:   "Take a screenshot of an iOS simulator or Android emulator",
+	Long:    `Take a screenshot of a running iOS simulator or Android emulator and save it to a file.`,
+	Args:    cobra.RangeArgs(1, 2),
 	Run: func(cmd *cobra.Command, args []string) {
 		deviceID := args[0]
 
@@ -43,10 +44,11 @@ var screenshotCmd = &cobra.Command{
 }
 
 var recordCmd = &cobra.Command{
-	Use:   "record [device-name-or-udid] [output-file]",
-	Short: "Record screen of an iOS simulator or Android emulator",
-	Long:  `Start screen recording of a running iOS simulator or Android emulator.`,
-	Args:  cobra.RangeArgs(1, 2),
+	Use:     "record [device-name-or-udid] [output-file]",
+	Aliases: []string{"rec"},
+	Short:   "Record screen of an iOS simulator or Android emulator",
+	Long:    `Start screen recording of a running iOS simulator or Android emulator.`,
+	Args:    cobra.RangeArgs(1, 2),
 	Run: func(cmd *cobra.Command, args []string) {
 		deviceID := args[0]
 

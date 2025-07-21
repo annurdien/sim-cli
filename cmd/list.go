@@ -22,9 +22,10 @@ type Device struct {
 }
 
 var listCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List available iOS simulators and Android emulators",
-	Long:  `Display a list of all available iOS simulators and Android emulators with their current status.`,
+	Use:     "list",
+	Aliases: []string{"l", "ls"},
+	Short:   "List available iOS simulators and Android emulators",
+	Long:    `Display a list of all available iOS simulators and Android emulators with their current status.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		devices := []Device{}
 
