@@ -12,10 +12,11 @@ SIM-CLI is a cross-platform command-line tool that provides a unified interface 
 
 ## Features
 
-- **Device Management**: List, start, stop, shutdown, and restart simulators/emulators
+- **Device Management**: List, start, stop, shutdown, restart, and delete simulators/emulators
 - **Media Capture**: Take screenshots and record screen activity
 - **Cross-Platform**: Works on macOS (with full iOS simulator support) and Linux/Windows (Android emulators only)
 - **User-Friendly**: Clean, intuitive CLI interface with helpful error messages
+- **Shorthand Commands**: Quick aliases for all commands (e.g., `l` for list, `s` for start)
 
 ## Installation
 
@@ -38,6 +39,22 @@ make install
 ```
 
 ## Usage
+
+### Quick Start
+
+```bash
+# List all devices (shorthand: sim l or sim ls)
+sim list
+
+# Start a device (shorthand: sim s "device")
+sim start "iPhone 15 Pro"
+
+# Take a screenshot (shorthand: sim ss "device")
+sim screenshot "iPhone 15 Pro"
+
+# Stop the device (shorthand: sim st "device") 
+sim stop "iPhone 15 Pro"
+```
 
 ### List Available Devices
 
@@ -79,6 +96,18 @@ sim stop "iPhone 15 Pro"
 sim restart "Pixel_7_API_34"
 ```
 
+### Delete a Device
+
+```bash
+# Delete by name (⚠️ This permanently removes the device)
+sim delete "iPhone 15 Pro"
+
+# Delete by UDID
+sim delete A1B2C3D4-E5F6-G7H8-I9J0-K1L2M3N4O5P6
+```
+
+**Warning**: The delete command permanently removes the simulator or emulator. Use with caution!
+
 ### Take a Screenshot
 
 ```bash
@@ -104,17 +133,29 @@ sim record "iPhone 15 Pro" my_recording.mp4 --duration 60
 
 ## Commands Reference
 
-| Command | Description |
-|---------|-------------|
-| `list` | List all available simulators and emulators |
-| `start <device>` | Start a simulator or emulator |
-| `stop <device>` | Stop a running simulator or emulator |
-| `shutdown <device>` | Shutdown a simulator or emulator |
-| `restart <device>` | Restart a simulator or emulator |
-| `screenshot <device> [file]` | Take a screenshot |
-| `record <device> [file]` | Record screen activity |
-| `help` | Show help information |
-| `version` | Show version information |
+| Command | Aliases | Description |
+|---------|---------|-------------|
+| `list` | `l`, `ls` | List all available simulators and emulators |
+| `start <device>` | `s` | Start a simulator or emulator |
+| `stop <device>` | `st` | Stop a running simulator or emulator |
+| `shutdown <device>` | `sd` | Shutdown a simulator or emulator |
+| `restart <device>` | `r` | Restart a simulator or emulator |
+| `delete <device>` | `d`, `del` | Delete a simulator or emulator (permanent) |
+| `screenshot <device> [file]` | `ss`, `shot` | Take a screenshot |
+| `record <device> [file]` | `rec` | Record screen activity |
+| `help` | - | Show help information |
+| `version` | - | Show version information |
+
+### Shorthand Examples
+
+```bash
+# These commands are equivalent:
+sim list # or sim l or sim ls
+sim start "device" # or sim s "device"
+sim stop "device"  # or sim st "device"
+sim delete "device" # or sim d "device" or sim del "device"
+sim screenshot "device" # or sim ss "device" or sim shot "device"
+```
 
 ## Device Identification
 
@@ -123,6 +164,22 @@ Devices can be identified by:
 - **UDID**: Unique device identifier
 
 Use `sim list` to see available devices and their identifiers.
+
+## Safety & Best Practices
+
+### Delete Command Safety
+- The `delete` command permanently removes simulators/emulators
+- Always verify the device name/UDID before deletion
+- Consider using `sim list` first to confirm the exact device name
+- Running devices are automatically stopped before deletion
+
+### iOS Simulators
+- Deleted simulators can be recreated through Xcode
+- Custom simulator configurations will be lost
+
+### Android Emulators  
+- Deleted AVDs must be manually recreated
+- All data and configurations will be permanently lost
 
 ## Platform Support
 
