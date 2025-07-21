@@ -25,7 +25,12 @@ SIM-CLI is a cross-platform command-line tool that provides a unified interface 
 ```bash
 git clone https://github.com/annurdien/sim-cli.git
 cd sim-cli
-go build -o sim
+make build
+```
+
+### Install
+```bash
+make install
 ```
 
 ## Usage
@@ -38,11 +43,14 @@ sim list
 
 Example output:
 ```
-TYPE                 NAME                                     STATE           UDID       RUNTIME
----------------------------------------------------------------------------------------------------
-iOS Simulator        iPhone 15 Pro                          Shutdown        A1B2C3D4   iOS 17.0
-iOS Simulator        iPad Air (5th generation)              Booted          E5F6G7H8   iPadOS 17.0
-Android Emulator     Pixel_7_API_34                         Shutdown        offline    Android
+┌───────────────┬───────────────────────────────────────┬──────────┬──────────────────────────────────────┬──────────┐
+│     TYPE      │                 NAME                  │  STATE   │                 UDID                 │ RUNTIME  │
+├───────────────┼───────────────────────────────────────┼──────────┼──────────────────────────────────────┼──────────┤
+│ iOS Simulator │ iPhone 15 Pro                         │ Shutdown │ AD3D3E8D-785C-4982-BADE-6D9A20D195A5 │ iOS 17.5 │
+│ iOS Simulator │ iPhone 15 Pro Max                     │ Shutdown │ 9A3BAC90-B6A4-43B9-A6FF-40192D23F4D1 │ iOS 17.5 │
+│ iOS Simulator │ iPhone 17.5                           │ Shutdown │ 28823504-3E61-427B-BB79-C8A845A501FC │ iOS 17.5 │
+│ iOS Simulator │ iPhone 15 Plus                        │ Shutdown │ 323FE005-AF77-448B-AF0B-C4AC20DFBF6B │ iOS 17.5 │
+└───────────────┴───────────────────────────────────────┴──────────┴──────────────────────────────────────┴──────────┘
 ```
 
 ### Start a Device
