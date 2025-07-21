@@ -1,6 +1,10 @@
 # SIM-CLI
-
 CLI tool to manage iOS simulators and Android emulators with ease.
+
+<div align="center">
+  <img src="./assets/cli.png" alt="SIM-CLI Terminal Icon">
+</div>
+
 
 ## Overview
 
