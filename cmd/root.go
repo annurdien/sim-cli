@@ -9,7 +9,7 @@ import (
 const version = "1.0.0"
 
 var rootCmd = &cobra.Command{
-	Use:     "sim-cli",
+	Use:     "sim",
 	Version: version,
 	Short:   "CLI tool to manage iOS simulators and Android emulators",
 	Long: `SIM-CLI is a command-line tool for managing iOS simulators and Android emulators.
