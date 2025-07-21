@@ -27,6 +27,7 @@ var rootCmd = &cobra.Command{
 It provides a simple interface to:
 - List available simulators and emulators
 - Start, stop, shutdown, and restart devices
+- Delete simulators and emulators
 - Take screenshots and record screen
 - Manage device lifecycle efficiently`,
 	Run: func(cmd *cobra.Command, args []string) {
