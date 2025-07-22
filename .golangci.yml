@@ -1,0 +1,142 @@
+run:
+  timeout: 5m
+  tests: true
+  skip-dirs:
+    - vendor
+
+linters:
+  enable:
+    - asciicheck
+    - bodyclose
+    - cyclop
+    - dupl
+    - durationcheck
+    - errcheck
+    - errorlint
+    - exhaustive
+    - exportloopref
+    - forbidigo
+    - forcetypeassert
+    - gci
+    - gochecknoglobals
+    - gochecknoinits
+    - gocognit
+    - goconst
+    - gocritic
+    - gocyclo
+    - godot
+    - godox
+    - goerr113
+    - gofmt
+    - gofumpt
+    - goheader
+    - goimports
+    - gomnd
+    - gomoddirectives
+    - gomodguard
+    - goprintffuncname
+    - gosec
+    - gosimple
+    - govet
+    - importas
+    - ineffassign
+    - lll
+    - makezero
+    - misspell
+    - nakedret
+    - nestif
+    - nilerr
+    - nlreturn
+    - noctx
+    - nolintlint
+    - prealloc
+    - predeclared
+    - revive
+    - staticcheck
+    - stylecheck
+    - tagliatelle
+    - tenv
+    - testpackage
+    - thelper
+    - tparallel
+    - typecheck
+    - unconvert
+    - unparam
+    - unused
+    - wastedassign
+    - whitespace
+    - wrapcheck
+
+linters-settings:
+  cyclop:
+    max-complexity: 15
+  
+  gocognit:
+    min-complexity: 15
+    
+  gocyclo:
+    min-complexity: 15
+    
+  goconst:
+    min-len: 3
+    min-occurrences: 3
+    
+  godot:
+    capital: true
+    
+  gomnd:
+    settings:
+      mnd:
+        checks:
+          - argument
+          - case
+          - condition
+          - operation
+          - return
+          
+  lll:
+    line-length: 120
+    
+  nakedret:
+    max-func-lines: 30
+    
+  nestif:
+    min-complexity: 5
+    
+  nlreturn:
+    block-size: 3
+    
+  revive:
+    rules:
+      - name: exported
+        arguments:
+          - checkPrivateReceivers
+          - sayRepetitiveInsteadOfStutters
+      - name: unused-parameter
+      - name: unreachable-code
+      - name: constant-logical-expr
+
+issues:
+  exclude-rules:
+    # Disable some linters for test files
+    - path: "_test\\.go"
+      linters:
+        - gochecknoglobals
+        - gochecknoinits
+        - gomnd
+        - lll
+        - dupl
+    
+    # Disable gomnd for main.go as it often contains setup constants
+    - path: "main\\.go"
+      linters:
+        - gomnd
+        
+    # Disable some linters for cmd package (CLI commands often have many constants)
+    - path: "cmd/"
+      linters:
+        - gomnd
+        - gochecknoglobals
+
+  max-same-issues: 0
+  max-issues-per-linter: 0
