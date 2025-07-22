@@ -109,11 +109,11 @@ func TestLoadConfig_CorruptedFile(t *testing.T) {
 
 	// Create corrupted config file
 	configDir := filepath.Join(tempDir, ".sim-cli")
-	os.MkdirAll(configDir, 0755)
+	_ = os.MkdirAll(configDir, 0o755)
 	configPath := filepath.Join(configDir, "config.json")
 
 	// Write invalid JSON
-	os.WriteFile(configPath, []byte("invalid json {"), 0644)
+	_ = os.WriteFile(configPath, []byte("invalid json {"), 0o644)
 
 	config, err := loadConfig()
 	if err == nil {
@@ -126,12 +126,13 @@ func TestLoadConfig_CorruptedFile(t *testing.T) {
 	}
 }
 
-// Helper functions that mirror the unexported functions in cmd package
+// Helper functions that mirror the unexported functions in cmd package.
 func getConfigDir() string {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return os.TempDir()
 	}
+
 	return filepath.Join(homeDir, ".sim-cli")
 }
 
@@ -142,7 +143,7 @@ func getConfigPath() string {
 func loadConfig() (*Config, error) {
 	configPath := getConfigPath()
 
-	if err := os.MkdirAll(getConfigDir(), 0755); err != nil {
+	if err := os.MkdirAll(getConfigDir(), 0o755); err != nil {
 		return &Config{}, err
 	}
 
@@ -166,7 +167,7 @@ func loadConfig() (*Config, error) {
 func saveConfig(config *Config) error {
 	configPath := getConfigPath()
 
-	if err := os.MkdirAll(getConfigDir(), 0755); err != nil {
+	if err := os.MkdirAll(getConfigDir(), 0o755); err != nil {
 		return err
 	}
 
@@ -175,7 +176,7 @@ func saveConfig(config *Config) error {
 		return err
 	}
 
-	return os.WriteFile(configPath, data, 0644)
+	return os.WriteFile(configPath, data, 0o644)
 }
 
 func saveLastStartedDevice(device *Device) error {
@@ -185,5 +186,6 @@ func saveLastStartedDevice(device *Device) error {
 	}
 
 	config.LastStartedDevice = device
+
 	return saveConfig(config)
 }

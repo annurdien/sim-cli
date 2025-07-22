@@ -15,6 +15,7 @@ func getConfigDir() string {
 	if err != nil {
 		return os.TempDir()
 	}
+
 	return filepath.Join(homeDir, ".sim-cli")
 }
 
@@ -25,7 +26,7 @@ func getConfigPath() string {
 func loadConfig() (*Config, error) {
 	configPath := getConfigPath()
 
-	if err := os.MkdirAll(getConfigDir(), 0755); err != nil {
+	if err := os.MkdirAll(getConfigDir(), 0o755); err != nil {
 		return &Config{}, err
 	}
 
@@ -49,7 +50,7 @@ func loadConfig() (*Config, error) {
 func saveConfig(config *Config) error {
 	configPath := getConfigPath()
 
-	if err := os.MkdirAll(getConfigDir(), 0755); err != nil {
+	if err := os.MkdirAll(getConfigDir(), 0o755); err != nil {
 		return err
 	}
 
@@ -58,7 +59,7 @@ func saveConfig(config *Config) error {
 		return err
 	}
 
-	return os.WriteFile(configPath, data, 0644)
+	return os.WriteFile(configPath, data, 0o600)
 }
 
 func saveLastStartedDevice(device *Device) error {
@@ -68,6 +69,7 @@ func saveLastStartedDevice(device *Device) error {
 	}
 
 	config.LastStartedDevice = device
+
 	return saveConfig(config)
 }
 

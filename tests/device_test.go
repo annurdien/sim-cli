@@ -232,6 +232,7 @@ func findIOSSimulatorByID(deviceID string) *Device {
 			return &sim
 		}
 	}
+
 	return nil
 }
 
@@ -242,6 +243,7 @@ func doesAndroidAVDExist(avdName string) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -256,6 +258,7 @@ func findRunningAndroidEmulator(avdName string) string {
 			return emu.UDID
 		}
 	}
+
 	return ""
 }
 
@@ -264,10 +267,11 @@ func getLastStartedDevice() (*Device, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return config.LastStartedDevice, nil
 }
 
-// Mock implementations for testing device operations
+// Mock implementations for testing device operations.
 func stopIOSSimulator(deviceID string) bool {
 	// In a real implementation, this would call xcrun simctl shutdown
 	// For testing, we just check if the device exists

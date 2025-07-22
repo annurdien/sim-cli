@@ -125,7 +125,7 @@ func TestListCommand_NoDevices(t *testing.T) {
 	}
 }
 
-// Helper functions that mirror the unexported functions in cmd package
+// Helper functions that mirror the unexported functions in cmd package.
 func getIOSSimulators() []Device {
 	cmd := exec.Command("xcrun", "simctl", "list", "devices", "--json")
 	output, err := cmd.Output()

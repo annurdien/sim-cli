@@ -60,10 +60,10 @@ var listCmd = &cobra.Command{
 				}
 			}
 
-			table.Append(device.Type, device.Name, device.State, udid, runtime)
+			_ = table.Append(device.Type, device.Name, device.State, udid, runtime)
 		}
 
-		table.Render()
+		_ = table.Render()
 	},
 }
 
