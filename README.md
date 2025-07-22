@@ -1,4 +1,6 @@
 # SIM-CLI
+[![Test and Build](https://github.com/annurdien/sim-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/annurdien/sim-cli/actions/workflows/ci.yml)
+
 CLI tool to manage iOS simulators and Android emulators with ease.
 
 <div align="center">
