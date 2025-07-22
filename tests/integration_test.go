@@ -228,7 +228,7 @@ func TestIntegration_ErrorHandling(t *testing.T) {
 	// Test 3: Corrupted config recovery
 	// Write invalid JSON to config file
 	configPath := getConfigPath()
-	err = os.WriteFile(configPath, []byte("invalid json"), 0644)
+	err = os.WriteFile(configPath, []byte("invalid json"), 0o644)
 	if err != nil {
 		t.Fatalf("Failed to write invalid config: %v", err)
 	}
@@ -457,7 +457,7 @@ func TestSecurity_ConfigFilePermissions(t *testing.T) {
 	}
 
 	mode := info.Mode()
-	if mode.Perm() != 0644 {
+	if mode.Perm() != 0o644 {
 		t.Errorf("Expected config file permissions 0644, got %o", mode.Perm())
 	}
 }
@@ -490,7 +490,7 @@ func TestSecurity_ConfigDirectory(t *testing.T) {
 	}
 
 	mode := info.Mode()
-	if mode.Perm() != 0755 {
+	if mode.Perm() != 0o755 {
 		t.Errorf("Expected config directory permissions 0755, got %o", mode.Perm())
 	}
 }

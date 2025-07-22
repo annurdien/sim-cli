@@ -226,7 +226,7 @@ func TestRecordCommand_DurationFlag(t *testing.T) {
 
 // Helper functions that mirror the logic in cmd package for testing
 
-func takeIOSScreenshot(deviceID, outputFile string) bool {
+func takeIOSScreenshot(deviceID, _ string) bool {
 	udid := findIOSSimulatorUDID(deviceID)
 	if udid == "" {
 		return false
@@ -235,7 +235,7 @@ func takeIOSScreenshot(deviceID, outputFile string) bool {
 	return false // Simulate command execution failure for testing
 }
 
-func takeAndroidScreenshot(deviceID, outputFile string) bool {
+func takeAndroidScreenshot(deviceID, _ string) bool {
 	runningUDID := findRunningAndroidEmulator(deviceID)
 	if runningUDID == "" {
 		return false
@@ -244,7 +244,7 @@ func takeAndroidScreenshot(deviceID, outputFile string) bool {
 	return false // Simulate command execution failure for testing
 }
 
-func recordIOSScreen(deviceID, outputFile string, duration int) bool {
+func recordIOSScreen(deviceID, _ string, duration int) bool {
 	udid := findIOSSimulatorUDID(deviceID)
 	if udid == "" {
 		return false
@@ -253,7 +253,7 @@ func recordIOSScreen(deviceID, outputFile string, duration int) bool {
 	return false // Simulate command execution failure for testing
 }
 
-func recordAndroidScreen(deviceID, outputFile string, duration int) bool {
+func recordAndroidScreen(deviceID, _ string, duration int) bool {
 	runningUDID := findRunningAndroidEmulator(deviceID)
 	if runningUDID == "" {
 		return false
@@ -276,6 +276,7 @@ func ensurePNGExtension(outputFile string) string {
 	if !strings.HasSuffix(strings.ToLower(outputFile), ".png") {
 		outputFile = strings.TrimSuffix(outputFile, filepath.Ext(outputFile)) + ".png"
 	}
+
 	return strings.ToLower(outputFile)
 }
 
@@ -283,6 +284,7 @@ func ensureMP4Extension(outputFile string) string {
 	if !strings.HasSuffix(strings.ToLower(outputFile), ".mp4") {
 		outputFile = strings.TrimSuffix(outputFile, filepath.Ext(outputFile)) + ".mp4"
 	}
+
 	return strings.ToLower(outputFile)
 }
 

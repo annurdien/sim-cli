@@ -96,6 +96,7 @@ func takeIOSScreenshot(deviceID, outputFile string) bool {
 	}
 
 	fmt.Printf("Screenshot saved to: %s\n", outputFile)
+
 	return true
 }
 
@@ -125,9 +126,10 @@ func takeAndroidScreenshot(deviceID, outputFile string) bool {
 	}
 
 	cleanupCmd := exec.Command("adb", "-s", runningUDID, "shell", "rm", devicePath)
-	cleanupCmd.Run() // Ignore errors
+	_ = cleanupCmd.Run() // Ignore errors
 
 	fmt.Printf("Screenshot saved to: %s\n", outputFile)
+
 	return true
 }
 
@@ -165,7 +167,7 @@ func recordIOSScreen(deviceID, outputFile string, duration int) bool {
 			fmt.Printf("Error stopping recording: %v\n", err)
 		}
 
-		cmd.Wait()
+		_ = cmd.Wait()
 	} else {
 		fmt.Println("Press Ctrl+C to stop recording...")
 		if err := cmd.Run(); err != nil {
@@ -175,6 +177,7 @@ func recordIOSScreen(deviceID, outputFile string, duration int) bool {
 	}
 
 	fmt.Printf("Recording saved to: %s\n", outputFile)
+
 	return true
 }
 
@@ -214,9 +217,10 @@ func recordAndroidScreen(deviceID, outputFile string, duration int) bool {
 	}
 
 	cleanupCmd := exec.Command("adb", "-s", runningUDID, "shell", "rm", devicePath)
-	cleanupCmd.Run() // Ignore errors
+	_ = cleanupCmd.Run() // Ignore errors
 
 	fmt.Printf("Recording saved to: %s\n", outputFile)
+
 	return true
 }
 

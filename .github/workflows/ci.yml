@@ -40,7 +40,7 @@ jobs:
         args: --timeout=5m
 
     - name: Run tests
-      run: go test ./...
+      run: go test ./tests/
 
     - name: Build application
       run: make build

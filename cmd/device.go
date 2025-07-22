@@ -9,6 +9,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const (
+	darwinOS    = "darwin"
+	bootedState = "Booted"
+)
+
 var startCmd = &cobra.Command{
 	Use:     "start [device-name-or-udid|lts]",
 	Aliases: []string{"s"},
@@ -31,7 +36,7 @@ Use 'lts' to start the last started device.`,
 			deviceID = lastDevice.Name
 		}
 
-		if runtime.GOOS == "darwin" {
+		if runtime.GOOS == darwinOS {
 			if startIOSSimulator(deviceID) {
 				return
 			}
@@ -54,7 +59,7 @@ var stopCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		deviceID := args[0]
 
-		if runtime.GOOS == "darwin" {
+		if runtime.GOOS == darwinOS {
 			if stopIOSSimulator(deviceID) {
 				return
 			}
@@ -118,8 +123,9 @@ var deleteCmd = &cobra.Command{
 	Use:     "delete [device-name-or-udid]",
 	Aliases: []string{"d", "del"},
 	Short:   "Delete an iOS simulator or Android emulator",
-	Long:    `Delete a specific iOS simulator or Android emulator by name or UDID. This will permanently remove the device.`,
-	Args:    cobra.ExactArgs(1),
+	Long: `Delete a specific iOS simulator or Android emulator by name or UDID. ` +
+		`This will permanently remove the device.`,
+	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		deviceID := args[0]
 
@@ -216,6 +222,7 @@ func startIOSSimulator(deviceID string) bool {
 	}
 
 	fmt.Printf("iOS simulator '%s' started successfully\n", deviceID)
+
 	return true
 }
 
@@ -233,6 +240,7 @@ func stopIOSSimulator(deviceID string) bool {
 	}
 
 	fmt.Printf("iOS simulator '%s' stopped successfully\n", deviceID)
+
 	return true
 }
 
@@ -249,7 +257,7 @@ func restartIOSSimulator(deviceID string) bool {
 	fmt.Printf("Restarting iOS simulator '%s'...\n", deviceID)
 
 	shutdownCmd := exec.Command("xcrun", "simctl", "shutdown", device.UDID)
-	shutdownCmd.Run() // Ignore error if already shutdown
+	_ = shutdownCmd.Run() // Ignore error if already shutdown
 
 	bootCmd := exec.Command("xcrun", "simctl", "boot", device.UDID)
 	if err := bootCmd.Run(); err != nil {
@@ -269,6 +277,7 @@ func restartIOSSimulator(deviceID string) bool {
 	}
 
 	fmt.Printf("iOS simulator '%s' restarted successfully\n", deviceID)
+
 	return true
 }
 
@@ -313,6 +322,7 @@ func startAndroidEmulator(deviceID string) bool {
 	}
 
 	fmt.Printf("Android emulator '%s' started successfully\n", deviceID)
+
 	return true
 }
 
@@ -330,6 +340,7 @@ func stopAndroidEmulator(deviceID string) bool {
 	}
 
 	fmt.Printf("Android emulator '%s' stopped successfully\n", deviceID)
+
 	return true
 }
 
@@ -349,6 +360,7 @@ func restartAndroidEmulator(deviceID string) bool {
 		if err := saveLastStartedDevice(device); err != nil {
 			fmt.Printf("Warning: Could not save last started device: %v\n", err)
 		}
+
 		return true
 	}
 
@@ -365,7 +377,7 @@ func deleteIOSSimulator(deviceID string) bool {
 
 	// Shutdown the simulator if it's running
 	shutdownCmd := exec.Command("xcrun", "simctl", "shutdown", udid)
-	shutdownCmd.Run() // Ignore error if already shutdown
+	_ = shutdownCmd.Run() // Ignore error if already shutdown
 
 	// Delete the simulator
 	cmd := exec.Command("xcrun", "simctl", "delete", udid)
@@ -375,6 +387,7 @@ func deleteIOSSimulator(deviceID string) bool {
 	}
 
 	fmt.Printf("iOS simulator '%s' deleted successfully\n", deviceID)
+
 	return true
 }
 
@@ -396,6 +409,7 @@ func deleteAndroidEmulator(deviceID string) bool {
 	}
 
 	fmt.Printf("Android emulator '%s' deleted successfully\n", deviceID)
+
 	return true
 }
 
@@ -421,6 +435,7 @@ func findIOSSimulatorByID(deviceID string) *Device {
 			return &sim
 		}
 	}
+
 	return nil
 }
 

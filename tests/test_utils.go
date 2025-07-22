@@ -5,12 +5,12 @@ import (
 	"testing"
 )
 
-// Config struct mirrors the one in cmd package for testing
+// Config struct mirrors the one in cmd package for testing.
 type Config struct {
 	LastStartedDevice *Device `json:"lastStartedDevice,omitempty"`
 }
 
-// Device struct mirrors the one in cmd package for testing
+// Device struct mirrors the one in cmd package for testing.
 type Device struct {
 	Name       string `json:"name"`
 	UDID       string `json:"udid"`
@@ -20,13 +20,13 @@ type Device struct {
 	DeviceType string `json:"deviceTypeIdentifier,omitempty"`
 }
 
-// TestHelpers provides utility functions for testing
+// TestHelpers provides utility functions for testing.
 type TestHelpers struct {
 	tempDir      string
 	originalHome string
 }
 
-// NewTestHelpers creates a new test helpers instance
+// NewTestHelpers creates a new test helpers instance.
 func NewTestHelpers(t *testing.T) *TestHelpers {
 	tempDir := t.TempDir()
 	originalHome := os.Getenv("HOME")
@@ -37,17 +37,17 @@ func NewTestHelpers(t *testing.T) *TestHelpers {
 	}
 }
 
-// SetupTempHome sets up a temporary home directory for testing
+// SetupTempHome sets up a temporary home directory for testing.
 func (h *TestHelpers) SetupTempHome() {
 	os.Setenv("HOME", h.tempDir)
 }
 
-// RestoreHome restores the original home directory
+// RestoreHome restores the original home directory.
 func (h *TestHelpers) RestoreHome() {
 	os.Setenv("HOME", h.originalHome)
 }
 
-// CreateTestDevice creates a test device with default values
+// CreateTestDevice creates a test device with default values.
 func CreateTestDevice(name string) *Device {
 	return &Device{
 		Name:    name,
@@ -58,7 +58,7 @@ func CreateTestDevice(name string) *Device {
 	}
 }
 
-// CreateTestConfig creates a test config with a test device
+// CreateTestConfig creates a test config with a test device.
 func CreateTestConfig() *Config {
 	return &Config{
 		LastStartedDevice: CreateTestDevice("test-device"),
@@ -66,14 +66,14 @@ func CreateTestConfig() *Config {
 }
 
 // MockExecCommand can be used to mock exec.Command calls in tests
-// This would be expanded with actual mocking functionality
+// This would be expanded with actual mocking functionality.
 type MockExecCommand struct {
 	Commands []string
 	Outputs  map[string]string
 	Errors   map[string]error
 }
 
-// NewMockExecCommand creates a new mock exec command
+// NewMockExecCommand creates a new mock exec command.
 func NewMockExecCommand() *MockExecCommand {
 	return &MockExecCommand{
 		Commands: []string{},
@@ -82,17 +82,17 @@ func NewMockExecCommand() *MockExecCommand {
 	}
 }
 
-// SetOutput sets the expected output for a command
+// SetOutput sets the expected output for a command.
 func (m *MockExecCommand) SetOutput(command, output string) {
 	m.Outputs[command] = output
 }
 
-// SetError sets the expected error for a command
+// SetError sets the expected error for a command.
 func (m *MockExecCommand) SetError(command string, err error) {
 	m.Errors[command] = err
 }
 
-// AssertCommandCalled checks if a command was called
+// AssertCommandCalled checks if a command was called.
 func (m *MockExecCommand) AssertCommandCalled(t *testing.T, command string) {
 	for _, cmd := range m.Commands {
 		if cmd == command {
@@ -102,46 +102,53 @@ func (m *MockExecCommand) AssertCommandCalled(t *testing.T, command string) {
 	t.Errorf("Expected command %s to be called", command)
 }
 
-// TestDeviceData provides common test device data
-var TestDeviceData = struct {
+// GetTestDeviceData provides common test device data.
+func GetTestDeviceData() struct {
 	IOSSimulator     Device
 	AndroidEmulator  Device
 	BootedSimulator  Device
 	ShutdownEmulator Device
-}{
-	IOSSimulator: Device{
-		Name:       "iPhone 15",
-		UDID:       "12345678-1234-5678-9012-123456789012",
-		State:      "Shutdown",
-		Type:       "iOS Simulator",
-		Runtime:    "iOS 17.0",
-		DeviceType: "com.apple.CoreSimulator.SimDeviceType.iPhone-15",
-	},
-	AndroidEmulator: Device{
-		Name:    "Pixel_7_API_34",
-		UDID:    "emulator-5554",
-		State:   "Shutdown",
-		Type:    "Android Emulator",
-		Runtime: "Android",
-	},
-	BootedSimulator: Device{
-		Name:       "iPhone 15 Pro",
-		UDID:       "87654321-4321-8765-2109-876543210987",
-		State:      "Booted",
-		Type:       "iOS Simulator",
-		Runtime:    "iOS 17.0",
-		DeviceType: "com.apple.CoreSimulator.SimDeviceType.iPhone-15-Pro",
-	},
-	ShutdownEmulator: Device{
-		Name:    "Pixel_8_API_34",
-		UDID:    "offline",
-		State:   "Shutdown",
-		Type:    "Android Emulator",
-		Runtime: "Android",
-	},
+} {
+	return struct {
+		IOSSimulator     Device
+		AndroidEmulator  Device
+		BootedSimulator  Device
+		ShutdownEmulator Device
+	}{
+		IOSSimulator: Device{
+			Name:       "iPhone 15",
+			UDID:       "12345678-1234-5678-9012-123456789012",
+			State:      "Shutdown",
+			Type:       "iOS Simulator",
+			Runtime:    "iOS 17.0",
+			DeviceType: "com.apple.CoreSimulator.SimDeviceType.iPhone-15",
+		},
+		AndroidEmulator: Device{
+			Name:    "Pixel_7_API_34",
+			UDID:    "emulator-5554",
+			State:   "Shutdown",
+			Type:    "Android Emulator",
+			Runtime: "Android",
+		},
+		BootedSimulator: Device{
+			Name:       "iPhone 15 Pro",
+			UDID:       "87654321-4321-8765-2109-876543210987",
+			State:      "Booted",
+			Type:       "iOS Simulator",
+			Runtime:    "iOS 17.0",
+			DeviceType: "com.apple.CoreSimulator.SimDeviceType.iPhone-15-Pro",
+		},
+		ShutdownEmulator: Device{
+			Name:    "Pixel_8_API_34",
+			UDID:    "offline",
+			State:   "Shutdown",
+			Type:    "Android Emulator",
+			Runtime: "Android",
+		},
+	}
 }
 
-// ValidateDevice validates that a device has required fields
+// ValidateDevice validates that a device has required fields.
 func ValidateDevice(t *testing.T, device *Device) {
 	if device == nil {
 		t.Fatal("Device should not be nil")
@@ -186,7 +193,7 @@ func ValidateDevice(t *testing.T, device *Device) {
 	}
 }
 
-// ValidateConfig validates that a config is properly structured
+// ValidateConfig validates that a config is properly structured.
 func ValidateConfig(t *testing.T, config *Config) {
 	if config == nil {
 		t.Fatal("Config should not be nil")
@@ -197,7 +204,7 @@ func ValidateConfig(t *testing.T, config *Config) {
 	}
 }
 
-// AssertDeviceEqual asserts that two devices are equal
+// AssertDeviceEqual asserts that two devices are equal.
 func AssertDeviceEqual(t *testing.T, expected, actual *Device) {
 	if expected == nil && actual == nil {
 		return
