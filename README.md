@@ -82,6 +82,11 @@ sim start "iPhone 15 Pro"
 
 # Start by UDID
 sim start A1B2C3D4-E5F6-G7H8-I9J0-K1L2M3N4O5P6
+
+# Start last started device device
+sim start lts
+# OR
+sim s lts
 ```
 
 ### Stop a Device
