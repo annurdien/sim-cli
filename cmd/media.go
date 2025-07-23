@@ -1,232 +1,340 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
+	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
 )
 
+type capturer interface {
+	Screenshot(outputFile string) error
+	Record(ctx context.Context, outputFile string) error
+	GetName() string
+}
+
+// --- iOS Simulator ---
+type iOSSimulator struct {
+	udid string
+	name string
+}
+
+func newIOSSimulator(deviceNameOrUDID string) (*iOSSimulator, error) {
+	udid, name := findIOSSimulator(deviceNameOrUDID)
+	if udid == "" {
+		return nil, fmt.Errorf("iOS simulator '%s' not found or not running", deviceNameOrUDID)
+	}
+	return &iOSSimulator{udid: udid, name: name}, nil
+}
+
+func (s *iOSSimulator) Screenshot(outputFile string) error {
+	fmt.Printf("Taking screenshot of iOS simulator '%s'...\n", s.name)
+	fullPath := ensureExtension(outputFile, ExtPNG)
+
+	cmd := exec.Command(CmdXCrun, CmdSimctl, "io", s.udid, "screenshot", fullPath)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to take iOS screenshot: %w", err)
+	}
+	fmt.Printf("Screenshot saved to: %s\n", fullPath)
+	return nil
+}
+
+func (s *iOSSimulator) Record(ctx context.Context, outputFile string) error {
+	fmt.Printf("Recording iOS simulator '%s' screen...\n", s.name)
+	fullPath := ensureExtension(outputFile, ExtMP4)
+
+	cmd := exec.CommandContext(ctx, CmdXCrun, CmdSimctl, "io", s.udid, "recordVideo", "--force", fullPath)
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start iOS screen recording: %w", err)
+	}
+
+	fmt.Println("Recording started. Press Ctrl+C to stop.")
+
+	err := cmd.Wait()
+
+	if ctx.Err() == nil && err != nil {
+		// If context is not done, but we have an error, it's a real error.
+		return fmt.Errorf("error during iOS screen recording: %w", err)
+	}
+
+	fmt.Printf("\nRecording saved to: %s\n", fullPath)
+	return nil
+}
+
+// --- Android Emulator ---
+
+type androidEmulator struct {
+	udid string
+	name string
+}
+
+func newAndroidEmulator(deviceNameOrUDID string) (*androidEmulator, error) {
+	udid, name := findRunningAndroidEmulator(deviceNameOrUDID)
+	if udid == "" {
+		return nil, fmt.Errorf("android emulator '%s' not found or not running", deviceNameOrUDID)
+	}
+	return &androidEmulator{udid: udid, name: name}, nil
+}
+
+func (e *androidEmulator) runADB(args ...string) error {
+	baseArgs := []string{"-s", e.udid}
+	cmd := exec.Command(CmdAdb, append(baseArgs, args...)...)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("adb command failed: %w\nOutput: %s", err, string(output))
+	}
+	return nil
+}
+
+func (e *androidEmulator) Screenshot(outputFile string) error {
+	fmt.Printf("Taking screenshot of Android emulator '%s'...\n", e.name)
+	fullPath := ensureExtension(outputFile, ExtPNG)
+	devicePath := "/sdcard/screenshot.png"
+
+	defer e.runADB("shell", "rm", devicePath)
+
+	if err := e.runADB("shell", "screencap", "-p", devicePath); err != nil {
+		return fmt.Errorf("failed to take Android screenshot: %w", err)
+	}
+
+	if err := e.runADB("pull", devicePath, fullPath); err != nil {
+		return fmt.Errorf("failed to pull Android screenshot: %w", err)
+	}
+
+	fmt.Printf("Screenshot saved to: %s\n", fullPath)
+	return nil
+}
+
+func (e *androidEmulator) Record(ctx context.Context, outputFile string) error {
+	fmt.Printf("Recording Android emulator '%s' screen...\n", e.name)
+	fullPath := ensureExtension(outputFile, ExtMP4)
+	devicePath := "/sdcard/recording.mp4"
+
+	defer e.runADB("shell", "rm", devicePath)
+
+	args := []string{"-s", e.udid, "shell", "screenrecord", devicePath}
+	cmd := exec.CommandContext(ctx, CmdAdb, args...)
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start Android screen recording: %w", err)
+	}
+
+	fmt.Println("Recording started. Press Ctrl+C to stop.")
+
+	err := cmd.Wait()
+	if ctx.Err() == nil && err != nil {
+		return fmt.Errorf("error during Android screen recording: %w", err)
+	}
+
+	if err := e.runADB("pull", devicePath, fullPath); err != nil {
+		return fmt.Errorf("failed to pull Android recording: %w", err)
+	}
+
+	fmt.Printf("\nRecording saved to: %s\n", fullPath)
+	return nil
+}
+
+func getCapturer(deviceID string) (capturer, error) {
+	if deviceID == "" {
+		return getActiveDevice()
+	}
+
+	if runtime.GOOS == DarwinOS {
+		if sim, err := newIOSSimulator(deviceID); err == nil {
+			return sim, nil
+		}
+	}
+	if emu, err := newAndroidEmulator(deviceID); err == nil {
+		return emu, nil
+	}
+	return nil, fmt.Errorf("device '%s' not found or not a running iOS simulator or Android emulator", deviceID)
+}
+
+func getActiveDevice() (capturer, error) {
+	if runtime.GOOS == DarwinOS {
+		if sim, err := getRunningIOSSimulator(); err == nil {
+			fmt.Printf("Active device found: iOS Simulator '%s'\n", sim.name)
+			return sim, nil
+		}
+	}
+
+	if emu, err := getRunningAndroidEmulator(); err == nil {
+		fmt.Printf("Active device found: Android Emulator '%s'\n", emu.name)
+		return emu, nil
+	}
+
+	return nil, fmt.Errorf("no active iOS simulator or Android emulator found")
+}
+
+func handleRecording(c capturer, outputFile string, duration int, convertToGif, copy bool) error {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if duration > 0 {
+		fmt.Printf("Recording for %d seconds...\n", duration)
+		time.AfterFunc(time.Duration(duration)*time.Second, cancel)
+	}
+
+	// Handle Ctrl+C signal for graceful shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigChan
+		fmt.Println("\nStopping recording...")
+		cancel()
+	}()
+
+	err := c.Record(ctx, outputFile)
+	if err != nil {
+		return err
+	}
+
+	finalPath := outputFile
+	if convertToGif {
+		gifPath := strings.TrimSuffix(outputFile, ExtMP4) + ExtGIF
+		if err := convertToGIF(outputFile, gifPath); err != nil {
+			return err
+		}
+		finalPath = gifPath
+
+		if err := os.Remove(outputFile); err != nil {
+			fmt.Printf("Warning: could not remove original MP4 file: %v\n", err)
+		}
+	}
+
+	if copy {
+		if err := copyFileToClipboard(finalPath); err != nil {
+			fmt.Printf("Warning: could not copy to clipboard: %v\n", err)
+		} else {
+			fileType := strings.ToUpper(strings.TrimPrefix(filepath.Ext(finalPath), "."))
+			fmt.Printf("%s file copied to clipboard.\n", fileType)
+		}
+	}
+
+	return nil
+}
+
+// --- Cobra ---
+
 var screenshotCmd = &cobra.Command{
 	Use:     "screenshot [device-name-or-udid] [output-file]",
 	Aliases: []string{"ss", "shot"},
-	Short:   "Take a screenshot of an iOS simulator or Android emulator",
-	Long:    `Take a screenshot of a running iOS simulator or Android emulator and save it to a file.`,
-	Args:    cobra.RangeArgs(1, 2),
-	Run: func(cmd *cobra.Command, args []string) {
-		deviceID := args[0]
+	Short:   "Take a screenshot of a device",
+	Long:    `Take a screenshot of a running iOS simulator or Android emulator and save it to a file. If no device is specified, it will try to find the active one.`,
+	Args:    cobra.RangeArgs(0, 2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		var deviceID, outputFile string
+		if len(args) > 0 {
+			_, err := newIOSSimulator(args[0])
+			isDevice := err == nil
+			if !isDevice {
+				_, err = newAndroidEmulator(args[0])
+				isDevice = err == nil
+			}
 
-		// Generate output filename if not provided
-		outputFile := ""
-		if len(args) > 1 {
-			outputFile = args[1]
-		} else {
-			timestamp := time.Now().Format("20060102_150405")
-			outputFile = fmt.Sprintf("screenshot_%s_%s.png", deviceID, timestamp)
-		}
-
-		if runtime.GOOS == "darwin" {
-			if takeIOSScreenshot(deviceID, outputFile) {
-				return
+			if isDevice {
+				deviceID = args[0]
+				if len(args) > 1 {
+					outputFile = args[1]
+				}
+			} else {
+				outputFile = args[0]
 			}
 		}
 
-		if takeAndroidScreenshot(deviceID, outputFile) {
-			return
+		c, err := getCapturer(deviceID)
+		if err != nil {
+			return err
 		}
 
-		fmt.Printf("Device '%s' not found or failed to take screenshot\n", deviceID)
+		if outputFile == "" {
+			outputFile = generateFilename(PrefixScreenshot, c.GetName(), ExtPNG)
+		}
+
+		if err := c.Screenshot(outputFile); err != nil {
+			return err
+		}
+
+		if copy, _ := cmd.Flags().GetBool("copy"); copy {
+			if err := copyFileToClipboard(outputFile); err != nil {
+				fmt.Printf("Warning: could not copy to clipboard: %v\n", err)
+			} else {
+				fmt.Println("Screenshot copied to clipboard.")
+			}
+		}
+
+		return nil
 	},
 }
 
 var recordCmd = &cobra.Command{
 	Use:     "record [device-name-or-udid] [output-file]",
 	Aliases: []string{"rec"},
-	Short:   "Record screen of an iOS simulator or Android emulator",
-	Long:    `Start screen recording of a running iOS simulator or Android emulator.`,
-	Args:    cobra.RangeArgs(1, 2),
-	Run: func(cmd *cobra.Command, args []string) {
-		deviceID := args[0]
+	Short:   "Record screen of a device",
+	Long: `Start screen recording of a running iOS simulator or Android emulator.
+If no device is specified, it will try to find the active one.
+The recording can be stopped by pressing Ctrl+C or by specifying a duration.`,
+	Args: cobra.RangeArgs(0, 2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		var deviceID, outputFile string
+		if len(args) > 0 {
+			_, err := newIOSSimulator(args[0])
+			isDevice := err == nil
+			if !isDevice {
+				_, err = newAndroidEmulator(args[0])
+				isDevice = err == nil
+			}
 
-		// Generate output filename if not provided
-		outputFile := ""
-		if len(args) > 1 {
-			outputFile = args[1]
-		} else {
-			timestamp := time.Now().Format("20060102_150405")
-			outputFile = fmt.Sprintf("recording_%s_%s.mp4", deviceID, timestamp)
-		}
-
-		duration, _ := cmd.Flags().GetInt("duration")
-
-		if runtime.GOOS == "darwin" {
-			if recordIOSScreen(deviceID, outputFile, duration) {
-				return
+			if isDevice {
+				deviceID = args[0]
+				if len(args) > 1 {
+					outputFile = args[1]
+				}
+			} else {
+				outputFile = args[0]
 			}
 		}
 
-		if recordAndroidScreen(deviceID, outputFile, duration) {
-			return
+		c, err := getCapturer(deviceID)
+		if err != nil {
+			return err
 		}
 
-		fmt.Printf("Device '%s' not found or failed to start recording\n", deviceID)
+		if outputFile == "" {
+			outputFile = generateFilename(PrefixRecording, c.GetName(), ExtMP4)
+		}
+
+		duration, _ := cmd.Flags().GetInt("duration")
+		convertToGif, _ := cmd.Flags().GetBool("gif")
+		copy, _ := cmd.Flags().GetBool("copy")
+
+		return handleRecording(c, outputFile, duration, convertToGif, copy)
 	},
 }
 
-func takeIOSScreenshot(deviceID, outputFile string) bool {
-	udid := findIOSSimulatorUDID(deviceID)
-	if udid == "" {
-		return false
-	}
-
-	fmt.Printf("Taking screenshot of iOS simulator '%s'...\n", deviceID)
-
-	if !strings.HasSuffix(strings.ToLower(outputFile), ".png") {
-		outputFile = strings.TrimSuffix(outputFile, filepath.Ext(outputFile)) + ".png"
-	}
-
-	cmd := exec.Command("xcrun", "simctl", "io", udid, "screenshot", outputFile)
-	if err := cmd.Run(); err != nil {
-		fmt.Printf("Error taking iOS screenshot: %v\n", err)
-		return false
-	}
-
-	fmt.Printf("Screenshot saved to: %s\n", outputFile)
-
-	return true
+func (s *iOSSimulator) GetName() string {
+	return s.name
 }
 
-func takeAndroidScreenshot(deviceID, outputFile string) bool {
-	runningUDID := findRunningAndroidEmulator(deviceID)
-	if runningUDID == "" {
-		return false
-	}
-
-	fmt.Printf("Taking screenshot of Android emulator '%s'...\n", deviceID)
-
-	if !strings.HasSuffix(strings.ToLower(outputFile), ".png") {
-		outputFile = strings.TrimSuffix(outputFile, filepath.Ext(outputFile)) + ".png"
-	}
-
-	devicePath := "/sdcard/screenshot.png"
-	screenshotCmd := exec.Command("adb", "-s", runningUDID, "shell", "screencap", "-p", devicePath)
-	if err := screenshotCmd.Run(); err != nil {
-		fmt.Printf("Error taking Android screenshot: %v\n", err)
-		return false
-	}
-
-	pullCmd := exec.Command("adb", "-s", runningUDID, "pull", devicePath, outputFile)
-	if err := pullCmd.Run(); err != nil {
-		fmt.Printf("Error pulling Android screenshot: %v\n", err)
-		return false
-	}
-
-	cleanupCmd := exec.Command("adb", "-s", runningUDID, "shell", "rm", devicePath)
-	_ = cleanupCmd.Run() // Ignore errors
-
-	fmt.Printf("Screenshot saved to: %s\n", outputFile)
-
-	return true
-}
-
-func recordIOSScreen(deviceID, outputFile string, duration int) bool {
-	udid := findIOSSimulatorUDID(deviceID)
-	if udid == "" {
-		return false
-	}
-
-	fmt.Printf("Recording iOS simulator '%s' screen...\n", deviceID)
-
-	if !strings.HasSuffix(strings.ToLower(outputFile), ".mp4") {
-		outputFile = strings.TrimSuffix(outputFile, filepath.Ext(outputFile)) + ".mp4"
-	}
-
-	args := []string{"simctl", "io", udid, "recordVideo"}
-	if duration > 0 {
-		fmt.Printf("Recording for %d seconds...\n", duration)
-		// Note: simctl doesn't have a built-in duration option, so we'll need to handle this differently
-		// For now, we'll start recording and let the user stop it manually
-	}
-	args = append(args, outputFile)
-
-	cmd := exec.Command("xcrun", args...)
-
-	if duration > 0 {
-		if err := cmd.Start(); err != nil {
-			fmt.Printf("Error starting iOS screen recording: %v\n", err)
-			return false
-		}
-
-		time.Sleep(time.Duration(duration) * time.Second)
-
-		if err := cmd.Process.Kill(); err != nil {
-			fmt.Printf("Error stopping recording: %v\n", err)
-		}
-
-		_ = cmd.Wait()
-	} else {
-		fmt.Println("Press Ctrl+C to stop recording...")
-		if err := cmd.Run(); err != nil {
-			fmt.Printf("Error recording iOS screen: %v\n", err)
-			return false
-		}
-	}
-
-	fmt.Printf("Recording saved to: %s\n", outputFile)
-
-	return true
-}
-
-func recordAndroidScreen(deviceID, outputFile string, duration int) bool {
-	runningUDID := findRunningAndroidEmulator(deviceID)
-	if runningUDID == "" {
-		return false
-	}
-
-	fmt.Printf("Recording Android emulator '%s' screen...\n", deviceID)
-
-	if !strings.HasSuffix(strings.ToLower(outputFile), ".mp4") {
-		outputFile = strings.TrimSuffix(outputFile, filepath.Ext(outputFile)) + ".mp4"
-	}
-
-	devicePath := "/sdcard/recording.mp4"
-
-	args := []string{"-s", runningUDID, "shell", "screenrecord"}
-	if duration > 0 {
-		args = append(args, "--time-limit", fmt.Sprintf("%d", duration))
-		fmt.Printf("Recording for %d seconds...\n", duration)
-	} else {
-		fmt.Println("Press Ctrl+C to stop recording...")
-	}
-	args = append(args, devicePath)
-
-	cmd := exec.Command("adb", args...)
-	if err := cmd.Run(); err != nil {
-		fmt.Printf("Error recording Android screen: %v\n", err)
-		return false
-	}
-
-	pullCmd := exec.Command("adb", "-s", runningUDID, "pull", devicePath, outputFile)
-	if err := pullCmd.Run(); err != nil {
-		fmt.Printf("Error pulling Android recording: %v\n", err)
-		return false
-	}
-
-	cleanupCmd := exec.Command("adb", "-s", runningUDID, "shell", "rm", devicePath)
-	_ = cleanupCmd.Run() // Ignore errors
-
-	fmt.Printf("Recording saved to: %s\n", outputFile)
-
-	return true
+func (e *androidEmulator) GetName() string {
+	return e.name
 }
 
 func init() {
 	rootCmd.AddCommand(screenshotCmd)
 	rootCmd.AddCommand(recordCmd)
 
-	recordCmd.Flags().IntP("duration", "d", 0, "Recording duration in seconds (0 for manual stop)")
+	screenshotCmd.Flags().BoolP("copy", "c", false, "Copy the file path to the clipboard")
+
+	recordCmd.Flags().IntP("duration", "d", 0, "Recording duration in seconds (0 for manual stop via Ctrl+C)")
+	recordCmd.Flags().BoolP("gif", "g", false, "Convert the recording to a GIF after stopping")
+	recordCmd.Flags().BoolP("copy", "c", false, "Copy the file path to the clipboard after stopping")
 }

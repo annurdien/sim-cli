@@ -29,7 +29,7 @@ var listCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		devices := []Device{}
 
-		if runtime.GOOS == "darwin" {
+		if runtime.GOOS == DarwinOS {
 			simulators := getIOSSimulators()
 			devices = append(devices, simulators...)
 		} else {
@@ -50,25 +50,25 @@ var listCmd = &cobra.Command{
 		for _, device := range devices {
 			udid := device.UDID
 
-			runtime := device.Runtime
-			if strings.Contains(runtime, "com.apple.CoreSimulator.SimRuntime.iOS-") {
+			runtimeVal := device.Runtime
+			if strings.Contains(runtimeVal, "com.apple.CoreSimulator.SimRuntime.iOS-") {
 				// Extract iOS version from runtime string
-				parts := strings.Split(runtime, "-")
+				parts := strings.Split(runtimeVal, "-")
 				if len(parts) >= 2 {
 					version := strings.Join(parts[len(parts)-2:], ".")
-					runtime = "iOS " + version
+					runtimeVal = "iOS " + version
 				}
 			}
 
-			_ = table.Append(device.Type, device.Name, device.State, udid, runtime)
+			table.Append([]string{device.Type, device.Name, device.State, udid, runtimeVal})
 		}
 
-		_ = table.Render()
+		table.Render()
 	},
 }
 
 func getIOSSimulators() []Device {
-	cmd := exec.Command("xcrun", "simctl", "list", "devices", "--json")
+	cmd := exec.Command(CmdXCrun, CmdSimctl, "list", "devices", "--json")
 	output, err := cmd.Output()
 	if err != nil {
 		fmt.Printf("Error getting iOS simulators: %v\n", err)
@@ -90,14 +90,14 @@ func getIOSSimulators() []Device {
 	}
 
 	var devices []Device
-	for runtime, deviceList := range result.Devices {
+	for runtimeVal, deviceList := range result.Devices {
 		for _, device := range deviceList {
 			devices = append(devices, Device{
 				Name:       device.Name,
 				UDID:       device.UDID,
 				State:      device.State,
-				Type:       "iOS Simulator",
-				Runtime:    runtime,
+				Type:       TypeIOSSimulator,
+				Runtime:    runtimeVal,
 				DeviceType: device.DeviceTypeIdentifier,
 			})
 		}
@@ -107,58 +107,75 @@ func getIOSSimulators() []Device {
 }
 
 func getAndroidEmulators() []Device {
-	runningCmd := exec.Command("adb", "devices")
-	runningOutput, err := runningCmd.Output()
-	runningDevices := make(map[string]bool)
-
-	if err == nil {
-		lines := strings.Split(string(runningOutput), "\n")
-		for _, line := range lines {
-			if strings.Contains(line, "emulator-") && strings.Contains(line, "device") {
-				parts := strings.Fields(line)
-				if len(parts) >= 2 {
-					runningDevices[parts[0]] = true
-				}
-			}
+	avdCmd := exec.Command(CmdEmulator, "-list-avds")
+	avdOutput, err := avdCmd.Output()
+	if err != nil {
+		// Emulator command might not be in path, but adb might work.
+		// We can proceed and just list running devices.
+	}
+	avdLines := strings.Split(strings.TrimSpace(string(avdOutput)), "\n")
+	avdMap := make(map[string]bool)
+	for _, line := range avdLines {
+		trimmedLine := strings.TrimSpace(line)
+		if trimmedLine != "" {
+			avdMap[trimmedLine] = true
 		}
 	}
 
-	cmd := exec.Command("emulator", "-list-avds")
-	output, err := cmd.Output()
+	adbCmd := exec.Command(CmdAdb, "devices")
+	adbOutput, err := adbCmd.Output()
 	if err != nil {
-		return []Device{}
-	}
-
-	var devices []Device
-	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line != "" {
-			state := "Shutdown"
-			udid := ""
-
-			// Check if this emulator is running
-			for runningUDID := range runningDevices {
-				if strings.Contains(runningUDID, "emulator-") {
-					state = "Booted"
-					udid = runningUDID
-					break
-				}
-			}
-
-			if udid == "" {
-				udid = "offline"
-			}
-
+		var devices []Device
+		for avd := range avdMap {
 			devices = append(devices, Device{
-				Name:    line,
-				UDID:    udid,
-				State:   state,
-				Type:    "Android Emulator",
+				Name:    avd,
+				UDID:    "offline",
+				State:   StateShutdown,
+				Type:    TypeAndroidEmulator,
 				Runtime: "Android",
 			})
 		}
+		return devices
+	}
+
+	runningDevices := make(map[string]string) // map[name]udid
+	lines := strings.Split(string(adbOutput), "\n")
+	for _, line := range lines {
+		if strings.Contains(line, "emulator-") && strings.Contains(line, "device") {
+			parts := strings.Fields(line)
+			if len(parts) > 0 {
+				udid := parts[0]
+				nameCmd := exec.Command(CmdAdb, "-s", udid, "emu", "avd", "name")
+				nameOutput, err := nameCmd.Output()
+				if err == nil {
+					name := strings.TrimSpace(string(nameOutput))
+					runningDevices[name] = udid
+				}
+			}
+		}
+	}
+
+	var devices []Device
+	for name, udid := range runningDevices {
+		devices = append(devices, Device{
+			Name:    name,
+			UDID:    udid,
+			State:   StateBooted,
+			Type:    TypeAndroidEmulator,
+			Runtime: "Android",
+		})
+		// Remove from avdMap so we don't list it twice
+		delete(avdMap, name)
+	}
+
+	for avd := range avdMap {
+		devices = append(devices, Device{
+			Name:    avd,
+			UDID:    "offline",
+			State:   StateShutdown,
+			Type:    TypeAndroidEmulator,
+			Runtime: "Android",
+		})
 	}
 
 	return devices
