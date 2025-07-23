@@ -51,7 +51,7 @@ func (s *iOSSimulator) Record(ctx context.Context, outputFile string) error {
 	fmt.Printf("Recording iOS simulator '%s' screen...\n", s.name)
 	fullPath := ensureExtension(outputFile, ExtMP4)
 
-	cmd := exec.CommandContext(ctx, CmdXCrun, CmdSimctl, "io", s.udid, "recordVideo", "--force", fullPath)
+	cmd := exec.Command(CmdXCrun, CmdSimctl, "io", s.udid, "recordVideo", "--codec=h264", "--force", fullPath)
 
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start iOS screen recording: %w", err)
@@ -59,11 +59,18 @@ func (s *iOSSimulator) Record(ctx context.Context, outputFile string) error {
 
 	fmt.Println("Recording started. Press Ctrl+C to stop.")
 
-	err := cmd.Wait()
+	<-ctx.Done()
 
-	if ctx.Err() == nil && err != nil {
-		// If context is not done, but we have an error, it's a real error.
-		return fmt.Errorf("error during iOS screen recording: %w", err)
+	if err := cmd.Process.Signal(syscall.SIGINT); err != nil {
+		cmd.Process.Kill()
+		return fmt.Errorf("failed to send interrupt signal to recording process: %w", err)
+	}
+
+	err := cmd.Wait()
+	if err != nil {
+		if _, ok := err.(*exec.ExitError); !ok {
+			return fmt.Errorf("error during iOS screen recording: %w", err)
+		}
 	}
 
 	fmt.Printf("\nRecording saved to: %s\n", fullPath)
@@ -121,7 +128,7 @@ func (e *androidEmulator) Record(ctx context.Context, outputFile string) error {
 	defer e.runADB("shell", "rm", devicePath)
 
 	args := []string{"-s", e.udid, "shell", "screenrecord", devicePath}
-	cmd := exec.CommandContext(ctx, CmdAdb, args...)
+	cmd := exec.Command(CmdAdb, args...)
 
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start Android screen recording: %w", err)
@@ -129,9 +136,18 @@ func (e *androidEmulator) Record(ctx context.Context, outputFile string) error {
 
 	fmt.Println("Recording started. Press Ctrl+C to stop.")
 
+	<-ctx.Done()
+
+	if err := cmd.Process.Signal(syscall.SIGINT); err != nil {
+		cmd.Process.Kill()
+		return fmt.Errorf("failed to send interrupt signal to adb process: %w", err)
+	}
+
 	err := cmd.Wait()
-	if ctx.Err() == nil && err != nil {
-		return fmt.Errorf("error during Android screen recording: %w", err)
+	if err != nil {
+		if _, ok := err.(*exec.ExitError); !ok {
+			return fmt.Errorf("error during Android screen recording: %w", err)
+		}
 	}
 
 	if err := e.runADB("pull", devicePath, fullPath); err != nil {
