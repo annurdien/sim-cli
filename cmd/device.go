@@ -19,7 +19,6 @@ Use 'lts' to start the last started device.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		deviceID := args[0]
 
-		// Handle "lts" (last started) case
 		if deviceID == "lts" {
 			lastDevice, err := getLastStartedDevice()
 			if err != nil || lastDevice == nil {
@@ -83,7 +82,7 @@ var shutdownCmd = &cobra.Command{
 			}
 		}
 
-		if stopAndroidEmulator(deviceID) { // Android doesn't distinguish between stop and shutdown
+		if stopAndroidEmulator(deviceID) {
 			return
 		}
 
@@ -210,7 +209,6 @@ func startIOSSimulator(deviceID string) bool {
 		fmt.Printf("Warning: Could not open Simulator app: %v\n", err)
 	}
 
-	// Save as last started device with complete information
 	device.State = StateBooted
 	if err := saveLastStartedDevice(device); err != nil {
 		fmt.Printf("Warning: Could not save last started device: %v\n", err)
@@ -265,7 +263,6 @@ func restartIOSSimulator(deviceID string) bool {
 		fmt.Printf("Warning: Could not open Simulator app: %v\n", err)
 	}
 
-	// Save as last started device with complete information
 	device.State = StateBooted
 	if err := saveLastStartedDevice(device); err != nil {
 		fmt.Printf("Warning: Could not save last started device: %v\n", err)
@@ -280,7 +277,6 @@ func startAndroidEmulator(deviceID string) bool {
 	if isAndroidEmulatorRunning(deviceID) {
 		fmt.Printf("Android emulator '%s' is already running\n", deviceID)
 
-		// Save as last started device even if already running
 		udid, name := findRunningAndroidEmulator(deviceID)
 		device := &Device{
 			Name:  name,
@@ -306,10 +302,9 @@ func startAndroidEmulator(deviceID string) bool {
 		return false
 	}
 
-	// Save as last started device
 	device := &Device{
 		Name:  deviceID,
-		UDID:  "starting", // Will be updated when emulator is fully running
+		UDID:  "starting",
 		Type:  TypeAndroidEmulator,
 		State: StateBooted,
 	}
@@ -346,7 +341,6 @@ func restartAndroidEmulator(deviceID string) bool {
 	stopAndroidEmulator(deviceID)
 
 	if startAndroidEmulator(deviceID) {
-		// Save as last started device
 		device := &Device{
 			Name:  deviceID,
 			UDID:  "restarting",
@@ -371,11 +365,9 @@ func deleteIOSSimulator(deviceID string) bool {
 
 	fmt.Printf("Deleting iOS simulator '%s'...\n", deviceID)
 
-	// Shutdown the simulator if it's running
 	shutdownCmd := exec.Command(CmdXCrun, CmdSimctl, "shutdown", udid)
-	_ = shutdownCmd.Run() // Ignore error if already shutdown
+	_ = shutdownCmd.Run()
 
-	// Delete the simulator
 	cmd := exec.Command(CmdXCrun, CmdSimctl, "delete", udid)
 	if err := cmd.Run(); err != nil {
 		fmt.Printf("Error deleting iOS simulator: %v\n", err)
@@ -394,10 +386,8 @@ func deleteAndroidEmulator(deviceID string) bool {
 
 	fmt.Printf("Deleting Android emulator '%s'...\n", deviceID)
 
-	// Stop the emulator if it's running
 	stopAndroidEmulator(deviceID)
 
-	// Delete the AVD
 	cmd := exec.Command(CmdAvdManager, "delete", "avd", "-n", deviceID)
 	if err := cmd.Run(); err != nil {
 		fmt.Printf("Error deleting Android emulator: %v\n", err)
@@ -409,10 +399,8 @@ func deleteAndroidEmulator(deviceID string) bool {
 	return true
 }
 
-// findIOSSimulator returns the UDID and name of a simulator by its name or UDID.
 func findIOSSimulator(deviceID string) (string, string) {
 	if len(deviceID) == 36 && strings.Count(deviceID, "-") == 4 {
-		// It's likely a UDID, find its name
 		sims := getIOSSimulators()
 		for _, sim := range sims {
 			if sim.UDID == deviceID {
@@ -421,7 +409,6 @@ func findIOSSimulator(deviceID string) (string, string) {
 		}
 	}
 
-	// It's a name, find its UDID
 	sims := getIOSSimulators()
 	for _, sim := range sims {
 		if strings.EqualFold(sim.Name, deviceID) {
@@ -450,7 +437,8 @@ func getRunningIOSSimulator() (*iOSSimulator, error) {
 			return &iOSSimulator{udid: sim.UDID, name: sim.Name}, nil
 		}
 	}
-	return nil, fmt.Errorf("no running iOS simulator found")
+
+	return nil, ErrNoRunningIOSSimulator
 }
 
 func doesAndroidAVDExist(avdName string) bool {
@@ -475,8 +463,6 @@ func isAndroidEmulatorRunning(avdName string) bool {
 	return udid != ""
 }
 
-// findRunningAndroidEmulator returns the UDID and name of a running emulator.
-// If avdName is empty, it returns the first running emulator it finds.
 func findRunningAndroidEmulator(avdName string) (string, string) {
 	cmd := exec.Command(CmdAdb, "devices")
 	output, err := cmd.Output()
@@ -484,8 +470,8 @@ func findRunningAndroidEmulator(avdName string) (string, string) {
 		return "", ""
 	}
 
-	lines := strings.Split(string(output), "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(string(output), "\n")
+	for line := range lines {
 		if strings.Contains(line, "emulator-") && strings.Contains(line, "device") {
 			parts := strings.Fields(line)
 			if len(parts) > 0 {
@@ -494,7 +480,6 @@ func findRunningAndroidEmulator(avdName string) (string, string) {
 				nameOutput, err := nameCmd.Output()
 				if err == nil {
 					actualName := strings.TrimSpace(string(nameOutput))
-					// If a name is specified, match it. Otherwise, return the first one.
 					if avdName == "" || actualName == avdName {
 						return emulatorID, actualName
 					}
@@ -511,15 +496,6 @@ func getRunningAndroidEmulator() (*androidEmulator, error) {
 	if udid != "" {
 		return &androidEmulator{udid: udid, name: name}, nil
 	}
-	return nil, fmt.Errorf("no running Android emulator found")
-}
 
-func init() {
-	rootCmd.AddCommand(startCmd)
-	rootCmd.AddCommand(stopCmd)
-	rootCmd.AddCommand(shutdownCmd)
-	rootCmd.AddCommand(restartCmd)
-	rootCmd.AddCommand(deleteCmd)
-	rootCmd.AddCommand(lastCmd)
-	rootCmd.AddCommand(ltsCmd)
+	return nil, ErrNoRunningAndroidEmulator
 }

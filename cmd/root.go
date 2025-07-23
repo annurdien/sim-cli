@@ -49,4 +49,23 @@ func Execute() error {
 
 func init() {
 	rootCmd.Flags().BoolP("version", "v", false, "Show version information")
+
+	rootCmd.AddCommand(listCmd)
+	rootCmd.AddCommand(startCmd)
+	rootCmd.AddCommand(stopCmd)
+	rootCmd.AddCommand(shutdownCmd)
+	rootCmd.AddCommand(restartCmd)
+	rootCmd.AddCommand(deleteCmd)
+	rootCmd.AddCommand(lastCmd)
+	rootCmd.AddCommand(ltsCmd)
+	rootCmd.AddCommand(screenshotCmd)
+	rootCmd.AddCommand(recordCmd)
+
+	// Screenshot flags
+	screenshotCmd.Flags().BoolP("copy", "c", false, "Copy the screenshot to the clipboard")
+
+	// Record flags
+	recordCmd.Flags().IntP("duration", "d", 0, "Duration of the recording in seconds (default: unlimited)")
+	recordCmd.Flags().BoolP("gif", "g", false, "Convert the recording to a GIF")
+	recordCmd.Flags().BoolP("copy", "c", false, "Copy the recording to the clipboard")
 }
