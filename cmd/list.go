@@ -52,7 +52,6 @@ var listCmd = &cobra.Command{
 
 			runtimeVal := device.Runtime
 			if strings.Contains(runtimeVal, "com.apple.CoreSimulator.SimRuntime.iOS-") {
-				// Extract iOS version from runtime string
 				parts := strings.Split(runtimeVal, "-")
 				if len(parts) >= 2 {
 					version := strings.Join(parts[len(parts)-2:], ".")
@@ -60,10 +59,10 @@ var listCmd = &cobra.Command{
 				}
 			}
 
-			table.Append([]string{device.Type, device.Name, device.State, udid, runtimeVal})
+			_ = table.Append([]string{device.Type, device.Name, device.State, udid, runtimeVal})
 		}
 
-		table.Render()
+		_ = table.Render()
 	},
 }
 
@@ -112,6 +111,7 @@ func getAndroidEmulators() []Device {
 	if err != nil {
 		// Emulator command might not be in path, but adb might work.
 		// We can proceed and just list running devices.
+		fmt.Printf("Could not run 'emulator -list-avds': %v. Only running emulators will be listed.\n", err)
 	}
 	avdLines := strings.Split(strings.TrimSpace(string(avdOutput)), "\n")
 	avdMap := make(map[string]bool)
@@ -125,7 +125,7 @@ func getAndroidEmulators() []Device {
 	adbCmd := exec.Command(CmdAdb, "devices")
 	adbOutput, err := adbCmd.Output()
 	if err != nil {
-		var devices []Device
+		devices := make([]Device, 0, len(avdMap))
 		for avd := range avdMap {
 			devices = append(devices, Device{
 				Name:    avd,
@@ -135,12 +135,13 @@ func getAndroidEmulators() []Device {
 				Runtime: "Android",
 			})
 		}
+
 		return devices
 	}
 
 	runningDevices := make(map[string]string) // map[name]udid
-	lines := strings.Split(string(adbOutput), "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(string(adbOutput), "\n")
+	for line := range lines {
 		if strings.Contains(line, "emulator-") && strings.Contains(line, "device") {
 			parts := strings.Fields(line)
 			if len(parts) > 0 {
@@ -155,7 +156,7 @@ func getAndroidEmulators() []Device {
 		}
 	}
 
-	var devices []Device
+	devices := make([]Device, 0, len(avdMap)+len(runningDevices))
 	for name, udid := range runningDevices {
 		devices = append(devices, Device{
 			Name:    name,
@@ -164,14 +165,13 @@ func getAndroidEmulators() []Device {
 			Type:    TypeAndroidEmulator,
 			Runtime: "Android",
 		})
-		// Remove from avdMap so we don't list it twice
 		delete(avdMap, name)
 	}
 
 	for avd := range avdMap {
 		devices = append(devices, Device{
 			Name:    avd,
-			UDID:    "offline",
+			UDID:    "N/A",
 			State:   StateShutdown,
 			Type:    TypeAndroidEmulator,
 			Runtime: "Android",
@@ -179,8 +179,4 @@ func getAndroidEmulators() []Device {
 	}
 
 	return devices
-}
-
-func init() {
-	rootCmd.AddCommand(listCmd)
 }

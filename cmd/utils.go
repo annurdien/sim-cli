@@ -23,6 +23,7 @@ func ensureExtension(filename, ext string) string {
 	if !strings.HasSuffix(strings.ToLower(filename), ext) {
 		return strings.TrimSuffix(filename, filepath.Ext(filename)) + ext
 	}
+
 	return filename
 }
 
@@ -52,6 +53,7 @@ func copyFileToClipboard(filePath string) error {
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to copy file to clipboard: %w", err)
 	}
+
 	return nil
 }
 
@@ -66,7 +68,7 @@ func commandExists(cmd string) bool {
 
 func convertToGIF(inputFile, outputFile string) error {
 	if !commandExists(CmdFFmpeg) {
-		return fmt.Errorf("'%s' is not installed. Please install ffmpeg to use the GIF conversion feature", CmdFFmpeg)
+		return ErrFFmpegNotInstalled
 	}
 
 	fmt.Println("Converting to GIF...")
@@ -75,5 +77,6 @@ func convertToGIF(inputFile, outputFile string) error {
 		return fmt.Errorf("failed to convert to GIF: %w\nOutput: %s", err, string(output))
 	}
 	fmt.Printf("GIF saved to: %s\n", outputFile)
+
 	return nil
 }

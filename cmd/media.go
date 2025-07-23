@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -21,7 +22,7 @@ type capturer interface {
 	GetName() string
 }
 
-// --- iOS Simulator ---
+// --- iOS Simulator ---.
 type iOSSimulator struct {
 	udid string
 	name string
@@ -30,8 +31,9 @@ type iOSSimulator struct {
 func newIOSSimulator(deviceNameOrUDID string) (*iOSSimulator, error) {
 	udid, name := findIOSSimulator(deviceNameOrUDID)
 	if udid == "" {
-		return nil, fmt.Errorf("iOS simulator '%s' not found or not running", deviceNameOrUDID)
+		return nil, ErrIOSSimulatorNotRunning
 	}
+
 	return &iOSSimulator{udid: udid, name: name}, nil
 }
 
@@ -44,6 +46,7 @@ func (s *iOSSimulator) Screenshot(outputFile string) error {
 		return fmt.Errorf("failed to take iOS screenshot: %w", err)
 	}
 	fmt.Printf("Screenshot saved to: %s\n", fullPath)
+
 	return nil
 }
 
@@ -62,19 +65,23 @@ func (s *iOSSimulator) Record(ctx context.Context, outputFile string) error {
 	<-ctx.Done()
 
 	if err := cmd.Process.Signal(syscall.SIGINT); err != nil {
-		cmd.Process.Kill()
+		_ = cmd.Process.Kill()
 		return fmt.Errorf("failed to send interrupt signal to recording process: %w", err)
 	}
 
 	err := cmd.Wait()
-	if err != nil {
-		if _, ok := err.(*exec.ExitError); !ok {
-			return fmt.Errorf("error during iOS screen recording: %w", err)
-		}
+	var exitErr *exec.ExitError
+	if err != nil && !errors.As(err, &exitErr) {
+		return fmt.Errorf("error during iOS screen recording: %w", err)
 	}
 
 	fmt.Printf("\nRecording saved to: %s\n", fullPath)
+
 	return nil
+}
+
+func (s *iOSSimulator) GetName() string {
+	return s.name
 }
 
 // --- Android Emulator ---
@@ -87,8 +94,9 @@ type androidEmulator struct {
 func newAndroidEmulator(deviceNameOrUDID string) (*androidEmulator, error) {
 	udid, name := findRunningAndroidEmulator(deviceNameOrUDID)
 	if udid == "" {
-		return nil, fmt.Errorf("android emulator '%s' not found or not running", deviceNameOrUDID)
+		return nil, ErrAndroidEmulatorNotRunning
 	}
+
 	return &androidEmulator{udid: udid, name: name}, nil
 }
 
@@ -98,6 +106,7 @@ func (e *androidEmulator) runADB(args ...string) error {
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("adb command failed: %w\nOutput: %s", err, string(output))
 	}
+
 	return nil
 }
 
@@ -106,7 +115,9 @@ func (e *androidEmulator) Screenshot(outputFile string) error {
 	fullPath := ensureExtension(outputFile, ExtPNG)
 	devicePath := "/sdcard/screenshot.png"
 
-	defer e.runADB("shell", "rm", devicePath)
+	defer func() {
+		_ = e.runADB("shell", "rm", devicePath)
+	}()
 
 	if err := e.runADB("shell", "screencap", "-p", devicePath); err != nil {
 		return fmt.Errorf("failed to take Android screenshot: %w", err)
@@ -117,6 +128,7 @@ func (e *androidEmulator) Screenshot(outputFile string) error {
 	}
 
 	fmt.Printf("Screenshot saved to: %s\n", fullPath)
+
 	return nil
 }
 
@@ -125,7 +137,9 @@ func (e *androidEmulator) Record(ctx context.Context, outputFile string) error {
 	fullPath := ensureExtension(outputFile, ExtMP4)
 	devicePath := "/sdcard/recording.mp4"
 
-	defer e.runADB("shell", "rm", devicePath)
+	defer func() {
+		_ = e.runADB("shell", "rm", devicePath)
+	}()
 
 	args := []string{"-s", e.udid, "shell", "screenrecord", devicePath}
 	cmd := exec.Command(CmdAdb, args...)
@@ -139,15 +153,14 @@ func (e *androidEmulator) Record(ctx context.Context, outputFile string) error {
 	<-ctx.Done()
 
 	if err := cmd.Process.Signal(syscall.SIGINT); err != nil {
-		cmd.Process.Kill()
+		_ = cmd.Process.Kill()
 		return fmt.Errorf("failed to send interrupt signal to adb process: %w", err)
 	}
 
 	err := cmd.Wait()
-	if err != nil {
-		if _, ok := err.(*exec.ExitError); !ok {
-			return fmt.Errorf("error during Android screen recording: %w", err)
-		}
+	var exitErr *exec.ExitError
+	if err != nil && !errors.As(err, &exitErr) {
+		return fmt.Errorf("error during Android screen recording: %w", err)
 	}
 
 	if err := e.runADB("pull", devicePath, fullPath); err != nil {
@@ -155,7 +168,12 @@ func (e *androidEmulator) Record(ctx context.Context, outputFile string) error {
 	}
 
 	fmt.Printf("\nRecording saved to: %s\n", fullPath)
+
 	return nil
+}
+
+func (e *androidEmulator) GetName() string {
+	return e.name
 }
 
 func getCapturer(deviceID string) (capturer, error) {
@@ -171,7 +189,8 @@ func getCapturer(deviceID string) (capturer, error) {
 	if emu, err := newAndroidEmulator(deviceID); err == nil {
 		return emu, nil
 	}
-	return nil, fmt.Errorf("device '%s' not found or not a running iOS simulator or Android emulator", deviceID)
+
+	return nil, ErrDeviceNotRunning
 }
 
 func getActiveDevice() (capturer, error) {
@@ -187,10 +206,10 @@ func getActiveDevice() (capturer, error) {
 		return emu, nil
 	}
 
-	return nil, fmt.Errorf("no active iOS simulator or Android emulator found")
+	return nil, ErrNoActiveDevice
 }
 
-func handleRecording(c capturer, outputFile string, duration int, convertToGif, copy bool) error {
+func handleRecording(c capturer, outputFile string, duration int, convertToGif, shouldCopy bool) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -226,7 +245,7 @@ func handleRecording(c capturer, outputFile string, duration int, convertToGif, 
 		}
 	}
 
-	if copy {
+	if shouldCopy {
 		if err := copyFileToClipboard(finalPath); err != nil {
 			fmt.Printf("Warning: could not copy to clipboard: %v\n", err)
 		} else {
@@ -279,7 +298,7 @@ var screenshotCmd = &cobra.Command{
 			return err
 		}
 
-		if copy, _ := cmd.Flags().GetBool("copy"); copy {
+		if shouldCopy, _ := cmd.Flags().GetBool("copy"); shouldCopy {
 			if err := copyFileToClipboard(outputFile); err != nil {
 				fmt.Printf("Warning: could not copy to clipboard: %v\n", err)
 			} else {
@@ -330,27 +349,8 @@ The recording can be stopped by pressing Ctrl+C or by specifying a duration.`,
 
 		duration, _ := cmd.Flags().GetInt("duration")
 		convertToGif, _ := cmd.Flags().GetBool("gif")
-		copy, _ := cmd.Flags().GetBool("copy")
+		shouldCopy, _ := cmd.Flags().GetBool("copy")
 
-		return handleRecording(c, outputFile, duration, convertToGif, copy)
+		return handleRecording(c, outputFile, duration, convertToGif, shouldCopy)
 	},
-}
-
-func (s *iOSSimulator) GetName() string {
-	return s.name
-}
-
-func (e *androidEmulator) GetName() string {
-	return e.name
-}
-
-func init() {
-	rootCmd.AddCommand(screenshotCmd)
-	rootCmd.AddCommand(recordCmd)
-
-	screenshotCmd.Flags().BoolP("copy", "c", false, "Copy the file path to the clipboard")
-
-	recordCmd.Flags().IntP("duration", "d", 0, "Recording duration in seconds (0 for manual stop via Ctrl+C)")
-	recordCmd.Flags().BoolP("gif", "g", false, "Convert the recording to a GIF after stopping")
-	recordCmd.Flags().BoolP("copy", "c", false, "Copy the file path to the clipboard after stopping")
 }

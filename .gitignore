@@ -36,6 +36,9 @@ go.work
 # Screenshots and recordings
 screenshot_*.png
 recording_*.mp4
+*.mp4
+*.gif
+*.png
 
 # Temporary files
 /tmp/
