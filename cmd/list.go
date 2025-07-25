@@ -118,13 +118,21 @@ func getIOSSimulators() []Device {
 }
 
 func getAndroidEmulators() []Device {
+	avdMap := getAvailableAVDs()
+	runningDevices := getRunningAndroidDevices()
+	return buildAndroidDeviceList(avdMap, runningDevices)
+}
+
+func getAvailableAVDs() map[string]bool {
 	avdCmd := exec.Command(CmdEmulator, "-list-avds")
 	avdOutput, err := avdCmd.Output()
 	if err != nil {
 		// Emulator command might not be in path, but adb might work.
 		// We can proceed and just list running devices.
 		fmt.Printf("Could not run 'emulator -list-avds': %v. Only running emulators will be listed.\n", err)
+		return make(map[string]bool)
 	}
+
 	avdLines := strings.Split(strings.TrimSpace(string(avdOutput)), "\n")
 	avdMap := make(map[string]bool)
 	for _, line := range avdLines {
@@ -134,46 +142,68 @@ func getAndroidEmulators() []Device {
 		}
 	}
 
+	return avdMap
+}
+
+func getRunningAndroidDevices() map[string]string {
 	adbCmd := exec.Command(CmdAdb, "devices")
 	adbOutput, err := adbCmd.Output()
 	if err != nil {
-		devices := make([]Device, 0, len(avdMap))
-		for avd := range avdMap {
-			devices = append(devices, Device{
-				Name:    avd,
-				UDID:    "N/A",
-				State:   StateShutdown,
-				Type:    TypeAndroidEmulator,
-				Runtime: "Android",
-			})
-		}
-
-		return devices
+		return make(map[string]string)
 	}
 
 	runningDevices := make(map[string]string) // map[name]udid
 	lines := strings.SplitSeq(strings.TrimSpace(string(adbOutput)), "\n")
 	for line := range lines {
 		line = strings.TrimSpace(line)
-		if strings.Contains(line, "emulator-") && strings.Contains(line, "device") && !strings.Contains(line, "List of devices attached") {
-			parts := strings.Fields(line)
-			if len(parts) >= 2 && parts[1] == "device" {
-				udid := parts[0]
-				nameCmd := exec.Command(CmdAdb, "-s", udid, "emu", "avd", "name")
-				nameOutput, err := nameCmd.Output()
-				if err == nil {
-					output := strings.TrimSpace(string(nameOutput))
-					lines := strings.Split(output, "\n")
-					if len(lines) > 0 {
-						name := strings.TrimSpace(lines[0])
-						runningDevices[name] = udid
-					}
-				}
+		if isValidEmulatorLine(line) {
+			name, udid := parseEmulatorLine(line)
+			if name != "" && udid != "" {
+				runningDevices[name] = udid
 			}
 		}
 	}
 
+	return runningDevices
+}
+
+func isValidEmulatorLine(line string) bool {
+	return strings.Contains(line, "emulator-") &&
+		strings.Contains(line, "device") &&
+		!strings.Contains(line, "List of devices attached")
+}
+
+func parseEmulatorLine(line string) (string, string) {
+	parts := strings.Fields(line)
+	if len(parts) < 2 || parts[1] != "device" {
+		return "", ""
+	}
+
+	udid := parts[0]
+	name := getEmulatorName(udid)
+
+	return name, udid
+}
+
+func getEmulatorName(udid string) string {
+	nameCmd := exec.Command(CmdAdb, "-s", udid, "emu", "avd", "name")
+	nameOutput, err := nameCmd.Output()
+	if err != nil {
+		return ""
+	}
+
+	output := strings.TrimSpace(string(nameOutput))
+	lines := strings.Split(output, "\n")
+	if len(lines) > 0 {
+		return strings.TrimSpace(lines[0])
+	}
+
+	return ""
+}
+
+func buildAndroidDeviceList(avdMap map[string]bool, runningDevices map[string]string) []Device {
 	devices := make([]Device, 0, len(avdMap)+len(runningDevices))
+
 	for name, udid := range runningDevices {
 		devices = append(devices, Device{
 			Name:    name,
