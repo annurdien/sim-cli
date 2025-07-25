@@ -448,8 +448,8 @@ func doesAndroidAVDExist(avdName string) bool {
 		return false
 	}
 
-	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(strings.TrimSpace(string(output)), "\n")
+	for line := range lines {
 		if strings.TrimSpace(line) == avdName {
 			return true
 		}
@@ -479,8 +479,17 @@ func findRunningAndroidEmulator(avdName string) (string, string) {
 				nameCmd := exec.Command(CmdAdb, "-s", emulatorID, "emu", "avd", "name")
 				nameOutput, err := nameCmd.Output()
 				if err == nil {
-					actualName := strings.TrimSpace(string(nameOutput))
-					if avdName == "" || actualName == avdName {
+					nameLines := strings.SplitSeq(strings.TrimSpace(string(nameOutput)), "\n")
+					actualName := ""
+					for nameLine := range nameLines {
+						trimmed := strings.TrimSpace(nameLine)
+						if trimmed != "" && trimmed != "OK" {
+							actualName = trimmed
+							break
+						}
+					}
+
+					if actualName != "" && (avdName == "" || actualName == avdName) {
 						return emulatorID, actualName
 					}
 				}
