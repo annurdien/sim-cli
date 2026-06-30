@@ -1,6 +1,8 @@
 # SIM-CLI
 
 [![Test and Build](https://github.com/annurdien/sim-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/annurdien/sim-cli/actions/workflows/ci.yml)
+[![Release Pipeline](https://github.com/annurdien/sim-cli/actions/workflows/release.yml/badge.svg)](https://github.com/annurdien/sim-cli/actions/workflows/release.yml)
+[![GitHub Release](https://img.shields.io/github/v/release/annurdien/sim-cli)](https://github.com/annurdien/sim-cli/releases)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/annurdien/sim-cli)](https://golang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -18,23 +20,26 @@
 
 SIM-CLI provides a simple and unified interface to manage your iOS simulators and Android emulators. Say goodbye to tedious GUI interactions and manage your devices directly from the terminal.
 
-## ✨ Features
+## Features
 
-- **📱 Device Management**: List, start, stop, shutdown, restart, and delete simulators/emulators.
-- **📸 Media Capture**: Take screenshots and record screen activity with ease.
-- **📋 Clipboard Integration**: Copy screenshots and recordings directly to your clipboard.
+- **Device Management**: List, start, stop, shutdown, restart, and delete simulators/emulators.
+- **Media Capture**: Take screenshots and record screen activity with ease.
+- **Clipboard Integration**: Copy screenshots and recordings directly to your clipboard.
 - **GIF Conversion**: Automatically convert screen recordings to GIFs.
-- **🚀 Cross-Platform**: Works on macOS (with full iOS simulator support) and Linux/Windows (Android emulators only).
-- **⌨️ User-Friendly**: Clean, intuitive CLI interface with helpful error messages.
-- **⚡️ Shorthand Commands**: Quick aliases for all commands (e.g., `l` for list, `s` for start).
-- **🧠 Smart Device Selection**: Easily start the last used device.
+- **Cross-Platform**: Works on macOS (with full iOS simulator support) and Linux/Windows (Android emulators only).
+- **User-Friendly**: Clean, intuitive CLI interface with helpful error messages.
+- **Shorthand Commands**: Quick aliases for all commands (e.g., `l` for list, `s` for start).
+- **Smart Device Selection**: Easily start the last used device.
 
-## 🛠️ Installation
+## Installation
 
-### Prerequisites
+### Install via Homebrew (macOS/Linux)
 
-- **For iOS simulators**: macOS with Xcode installed.
-- **For Android emulators**: Android SDK with `adb` and `emulator` tools in your PATH.
+The easiest way to install SIM-CLI is via Homebrew:
+
+```bash
+brew install annurdien/tap/sim-cli
+```
 
 ### Build from Source
 
@@ -42,19 +47,17 @@ SIM-CLI provides a simple and unified interface to manage your iOS simulators an
 git clone https://github.com/annurdien/sim-cli.git
 cd sim-cli
 make build
-```
-
-### Install
-
-```bash
 make install
 ```
 
-## 🚀 Usage
+## Usage
 
 ### Quick Start
 
 ```bash
+# Check system dependencies (iOS, Android, ffmpeg)
+sim doctor
+
 # List all available devices
 sim list
 
@@ -71,12 +74,13 @@ sim record "iPhone 15 Pro" --duration 10 --gif
 sim stop "iPhone 15 Pro"
 ```
 
-## 📚 Commands Reference
+## Commands Reference
 
 Here is a complete list of available commands and their options.
 
 | Command | Aliases | Description |
 |---|---|---|
+| `doctor` | - | Check system dependencies for sim-cli. |
 | `list` | `l`, `ls` | List all available simulators and emulators. |
 | `start <device>` | `s` | Start a simulator or emulator. Use `lts` to start the last used device. |
 | `stop <device>` | `st` | Stop a running simulator or emulator. |
@@ -90,13 +94,13 @@ Here is a complete list of available commands and their options.
 | `help` | - | Show help information. |
 | `version` | `-v` | Show version information. |
 
-### `screenshot` Options
+### screenshot Options
 
 | Flag | Shorthand | Description |
 |---|---|---|
 | `--copy` | `-c` | Copy the screenshot to the clipboard. |
 
-### `record` Options
+### record Options
 
 | Flag | Shorthand | Description |
 |---|---|---|
@@ -105,7 +109,7 @@ Here is a complete list of available commands and their options.
 | `--copy` | `-c` | Copy the recording file path to the clipboard. |
 
 
-## ⚠️ Safety & Best Practices
+## Safety & Best Practices
 
 ### Delete Command
 
@@ -115,7 +119,7 @@ The `delete` command is destructive and **permanently removes** the simulator or
 - Running devices are automatically stopped before deletion.
 - Deleted devices must be recreated through Xcode (for iOS) or the AVD Manager (for Android).
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Please feel free to submit a pull request.
 
@@ -125,6 +129,6 @@ Contributions are welcome! Please feel free to submit a pull request.
 4.  Push to the branch (`git push origin feature/AmazingFeature`).
 5.  Open a pull request.
 
-## 📄 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
