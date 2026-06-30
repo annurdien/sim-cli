@@ -64,6 +64,7 @@ func init() {
 	rootCmd.AddCommand(ltsCmd)
 	rootCmd.AddCommand(screenshotCmd)
 	rootCmd.AddCommand(recordCmd)
+	rootCmd.AddCommand(openCmd)
 	rootCmd.AddCommand(doctorCmd)
 
 	// deleteCmd flags

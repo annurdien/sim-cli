@@ -23,6 +23,7 @@ SIM-CLI provides a simple and unified interface to manage your iOS simulators an
 ## Features
 
 - **Device Management**: List, start, stop, shutdown, restart, and delete simulators/emulators.
+- **Deep Linking**: Instantly open any URL or deeplink on a running device.
 - **Media Capture**: Take screenshots and record screen activity with ease.
 - **Clipboard Integration**: Copy screenshots and recordings directly to your clipboard.
 - **GIF Conversion**: Automatically convert screen recordings to GIFs.
@@ -67,6 +68,9 @@ sim start "iPhone 15 Pro"
 # Take a screenshot and copy it to the clipboard
 sim screenshot "iPhone 15 Pro" --copy
 
+# Open a deeplink or URL
+sim open "iPhone 15 Pro" "https://google.com"
+
 # Record a 10-second GIF
 sim record "iPhone 15 Pro" --duration 10 --gif
 
@@ -87,6 +91,7 @@ Here is a complete list of available commands and their options.
 | `shutdown <device>` | `sd` | Shutdown a simulator or emulator. |
 | `restart <device>` | `r` | Restart a simulator or emulator. |
 | `delete <device>` | `d`, `del` | **Permanently** delete a simulator or emulator. |
+| `open <device> <url>` | `o` | Open a deeplink or URL on a running simulator/emulator. |
 | `screenshot <device> [file]` | `ss`, `shot` | Take a screenshot of a device. |
 | `record <device> [file]` | `rec` | Record screen activity of a device. |
 | `last` | - | Show the last used device. |
