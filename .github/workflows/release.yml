@@ -141,6 +141,9 @@ jobs:
     needs: [check-release, create-release]
     if: needs.check-release.outputs.should-release == 'true'
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Extract version from commit message
         id: version
         run: |
