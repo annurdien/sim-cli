@@ -4,6 +4,9 @@ on:
   push:
     branches: [ main ]
 
+permissions:
+  contents: write
+
 jobs:
   check-release:
     name: Check Release Trigger
@@ -98,16 +101,8 @@ jobs:
     - name: Download all artifacts
       uses: actions/download-artifact@v4
       with:
-        path: artifacts/
-        
-    - name: Prepare release files
-      run: |
-        mkdir -p release-files
-        # Copy binaries from Linux build
-        cp artifacts/sim-cli-binaries-ubuntu-latest/dist/* release-files/ 2>/dev/null || true
-        # Copy binaries from macOS build (if different)
-        cp artifacts/sim-cli-binaries-macos-latest/dist/* release-files/ 2>/dev/null || true
-        ls -la release-files/
+        path: release-files/
+        merge-multiple: true
         
     - name: Extract version from commit message
       id: version
