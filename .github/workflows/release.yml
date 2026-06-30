@@ -186,6 +186,8 @@ jobs:
           VERSION_NUM="${{ steps.version.outputs.version }}"
           VERSION_NUM="${VERSION_NUM#v}"
 
+          mkdir -p homebrew-tap/Formula
+
           cat > homebrew-tap/Formula/sim-cli.rb << EOF
           class SimCli < Formula
             desc "CLI tool to manage iOS simulators and Android emulators"
