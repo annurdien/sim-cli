@@ -31,17 +31,13 @@ type iOSSimulator struct {
 }
 
 func newIOSSimulator(deviceNameOrUDID string) (*iOSSimulator, error) {
-	udid, name := "", ""
 	device := FindIOSSimulatorByID(deviceNameOrUDID)
 
 	if device == nil {
 		return nil, ErrIOSSimulatorNotRunning
 	}
 
-	udid = device.UDID
-	name = device.Name
-
-	return &iOSSimulator{udid: udid, name: name}, nil
+	return &iOSSimulator{udid: device.UDID, name: device.Name}, nil
 }
 
 func (s *iOSSimulator) Screenshot(outputFile string) error {
@@ -111,8 +107,10 @@ func newAndroidEmulator(deviceNameOrUDID string) (*androidEmulator, error) {
 }
 
 func (e *androidEmulator) runADB(args ...string) error {
-	baseArgs := []string{"-s", e.udid}
-	cmd := exec.Command(CmdAdb, append(baseArgs, args...)...)
+	cmdArgs := make([]string, 0, 2+len(args))
+	cmdArgs = append(cmdArgs, "-s", e.udid)
+	cmdArgs = append(cmdArgs, args...)
+	cmd := exec.Command(CmdAdb, cmdArgs...)
 
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("adb command failed: %w\nOutput: %s", err, string(output))

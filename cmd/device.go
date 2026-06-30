@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os/exec"
 	"runtime"
@@ -108,7 +109,7 @@ var deleteCmd = &cobra.Command{
 
 			var confirm string
 
-			fmt.Scanln(&confirm)
+			_, _ = fmt.Scanln(&confirm)
 
 			if strings.ToLower(strings.TrimSpace(confirm)) != "y" {
 				fmt.Println("Deletion cancelled.")
@@ -176,7 +177,7 @@ func startDevice(deviceID string) error {
 	if deviceID == "lts" {
 		lastDevice, err := GetLastStartedDevice()
 		if err != nil || lastDevice == nil {
-			return fmt.Errorf("no last started device found; start a device first to use 'lts'")
+			return errors.New("no last started device found; start a device first to use 'lts'")
 		}
 
 		fmt.Printf("Starting last device: %s (%s)\n", lastDevice.Name, lastDevice.Type)
