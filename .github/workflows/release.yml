@@ -193,6 +193,8 @@ jobs:
             version "${VERSION_NUM}"
             license "MIT"
 
+            depends_on "ffmpeg"
+
             if OS.mac? && Hardware::CPU.intel?
               url "https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.version }}/sim-darwin-amd64"
               sha256 "${{ steps.sha_mac_amd64.outputs.sha }}"
