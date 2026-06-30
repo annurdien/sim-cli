@@ -6,17 +6,19 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"sort"
 	"strings"
 
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 )
 
+// Device represents an iOS simulator or Android emulator.
 type Device struct {
 	Name       string `json:"name"`
 	UDID       string `json:"udid"`
 	State      string `json:"state"`
-	Type       string `json:"type"` // "simulator" or "emulator"
+	Type       string `json:"type"` // "iOS Simulator" or "Android Emulator"
 	Runtime    string `json:"runtime,omitempty"`
 	DeviceType string `json:"deviceTypeIdentifier,omitempty"`
 }
@@ -27,38 +29,45 @@ var listCmd = &cobra.Command{
 	Short:   "List available iOS simulators and Android emulators",
 	Long:    `Display a list of all available iOS simulators and Android emulators with their current status.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		devices := []Device{}
+		var devices []Device
 
 		if runtime.GOOS == DarwinOS {
-			simulators := getIOSSimulators()
+			simulators := GetIOSSimulators()
 			devices = append(devices, simulators...)
 		}
 
-		emulators := getAndroidEmulators()
+		emulators := GetAndroidEmulators()
 		devices = append(devices, emulators...)
 
 		if len(devices) == 0 {
 			fmt.Println("No simulators or emulators found")
+
 			return
 		}
+
+		// Sort deterministically: by Type first, then by Name.
+		sort.Slice(devices, func(i, j int) bool {
+			if devices[i].Type != devices[j].Type {
+				return devices[i].Type < devices[j].Type
+			}
+
+			return devices[i].Name < devices[j].Name
+		})
 
 		table := tablewriter.NewWriter(os.Stdout)
 		table.Header("Type", "Name", "State", "UDID", "Runtime")
 
 		for _, device := range devices {
-			udid := device.UDID
-
-			runtimeVal := device.Runtime
-			runtimeVal = formatRuntime(runtimeVal)
-
-			_ = table.Append([]string{device.Type, device.Name, device.State, udid, runtimeVal})
+			runtimeVal := FormatRuntime(device.Runtime)
+			_ = table.Append([]string{device.Type, device.Name, device.State, device.UDID, runtimeVal})
 		}
 
 		_ = table.Render()
 	},
 }
 
-func formatRuntime(runtimeVal string) string {
+// FormatRuntime converts a raw CoreSimulator runtime identifier to a human-readable string.
+func FormatRuntime(runtimeVal string) string {
 	if strings.Contains(runtimeVal, "com.apple.CoreSimulator.SimRuntime.") {
 		parts := strings.Split(runtimeVal, ".")
 		if len(parts) >= 4 {
@@ -68,6 +77,7 @@ func formatRuntime(runtimeVal string) string {
 			if len(platformParts) >= 2 {
 				platform := platformParts[0]
 				version := strings.Join(platformParts[1:], ".")
+
 				return platform + " " + version
 			}
 		}
@@ -80,7 +90,8 @@ func formatRuntime(runtimeVal string) string {
 	return runtimeVal
 }
 
-func getIOSSimulators() []Device {
+// GetIOSSimulators returns all iOS simulators reported by xcrun simctl.
+func GetIOSSimulators() []Device {
 	cmd := exec.Command(CmdXCrun, CmdSimctl, "list", "devices", "--json")
 	output, err := cmd.Output()
 	if err != nil {
@@ -117,24 +128,28 @@ func getIOSSimulators() []Device {
 	return devices
 }
 
-func getAndroidEmulators() []Device {
-	avdMap := getAvailableAVDs()
-	runningDevices := getRunningAndroidDevices()
-	return buildAndroidDeviceList(avdMap, runningDevices)
+// GetAndroidEmulators returns all Android emulators (both running and defined AVDs).
+func GetAndroidEmulators() []Device {
+	avdMap := GetAvailableAVDs()
+	runningDevices := GetRunningAndroidDevices()
+
+	return BuildAndroidDeviceList(avdMap, runningDevices)
 }
 
-func getAvailableAVDs() map[string]bool {
+// GetAvailableAVDs returns a set of all AVD names defined on this machine.
+func GetAvailableAVDs() map[string]bool {
 	avdCmd := exec.Command(CmdEmulator, "-list-avds")
 	avdOutput, err := avdCmd.Output()
 	if err != nil {
-		// Emulator command might not be in path, but adb might work.
-		// We can proceed and just list running devices.
-		fmt.Printf("Could not run 'emulator -list-avds': %v. Only running emulators will be listed.\n", err)
+		// Emulator may not be in PATH; only running devices will be listed.
+		fmt.Fprintf(os.Stderr, "Warning: could not run 'emulator -list-avds': %v. Only running emulators will be listed.\n", err)
+
 		return make(map[string]bool)
 	}
 
 	avdLines := strings.Split(strings.TrimSpace(string(avdOutput)), "\n")
 	avdMap := make(map[string]bool)
+
 	for _, line := range avdLines {
 		trimmedLine := strings.TrimSpace(line)
 		if trimmedLine != "" {
@@ -145,7 +160,8 @@ func getAvailableAVDs() map[string]bool {
 	return avdMap
 }
 
-func getRunningAndroidDevices() map[string]string {
+// GetRunningAndroidDevices returns a map of running emulator name → UDID from adb devices.
+func GetRunningAndroidDevices() map[string]string {
 	adbCmd := exec.Command(CmdAdb, "devices")
 	adbOutput, err := adbCmd.Output()
 	if err != nil {
@@ -180,12 +196,13 @@ func parseEmulatorLine(line string) (string, string) {
 	}
 
 	udid := parts[0]
-	name := getEmulatorName(udid)
+	name := GetEmulatorName(udid)
 
 	return name, udid
 }
 
-func getEmulatorName(udid string) string {
+// GetEmulatorName retrieves the AVD name of a running emulator by its serial (e.g. "emulator-5554").
+func GetEmulatorName(udid string) string {
 	nameCmd := exec.Command(CmdAdb, "-s", udid, "emu", "avd", "name")
 	nameOutput, err := nameCmd.Output()
 	if err != nil {
@@ -201,7 +218,8 @@ func getEmulatorName(udid string) string {
 	return ""
 }
 
-func buildAndroidDeviceList(avdMap map[string]bool, runningDevices map[string]string) []Device {
+// BuildAndroidDeviceList merges running and available AVDs into a unified Device slice.
+func BuildAndroidDeviceList(avdMap map[string]bool, runningDevices map[string]string) []Device {
 	devices := make([]Device, 0, len(avdMap)+len(runningDevices))
 
 	for name, udid := range runningDevices {

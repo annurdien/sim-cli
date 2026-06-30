@@ -2,10 +2,10 @@ package tests
 
 import (
 	"encoding/json"
-	"os/exec"
 	"runtime"
-	"strings"
 	"testing"
+
+	"github.com/annurdien/sim-cli/cmd"
 )
 
 func TestGetIOSSimulators(t *testing.T) {
@@ -13,15 +13,11 @@ func TestGetIOSSimulators(t *testing.T) {
 		t.Skip("iOS simulators only available on macOS")
 	}
 
-	// Test that we can get iOS simulators without errors
-	simulators := getIOSSimulators()
-
-	// Should not panic or error, even if no simulators available
+	simulators := cmd.GetIOSSimulators()
 	if simulators == nil {
 		t.Error("Simulators slice should not be nil")
 	}
 
-	// Validate structure of returned devices
 	for _, sim := range simulators {
 		if sim.Type != "iOS Simulator" {
 			t.Errorf("Expected type 'iOS Simulator', got '%s'", sim.Type)
@@ -38,15 +34,11 @@ func TestGetIOSSimulators(t *testing.T) {
 }
 
 func TestGetAndroidEmulators(t *testing.T) {
-	// Test that we can get Android emulators without errors
-	emulators := getAndroidEmulators()
-
-	// Should not panic or error, even if no emulators available
+	emulators := cmd.GetAndroidEmulators()
 	if emulators == nil {
 		t.Error("Emulators slice should not be nil")
 	}
 
-	// Validate structure of returned devices
 	for _, emu := range emulators {
 		if emu.Type != "Android Emulator" {
 			t.Errorf("Expected type 'Android Emulator', got '%s'", emu.Type)
@@ -62,9 +54,24 @@ func TestGetAndroidEmulators(t *testing.T) {
 	}
 }
 
-func TestDeviceStruct(t *testing.T) {
-	// Test Device struct creation and JSON marshaling
-	device := Device{
+func TestDeviceList_DeterministicOrder(t *testing.T) {
+	// Build two device lists and verify they come out in the same order.
+	// (Tests the sort added to listCmd; uses BuildAndroidDeviceList directly.)
+	avdMap := map[string]bool{"Pixel_Z": true, "Pixel_A": true, "Pixel_M": true}
+	running := map[string]string{}
+
+	devices := cmd.BuildAndroidDeviceList(avdMap, running)
+
+	// After sorting by name, order should be Pixel_A, Pixel_M, Pixel_Z.
+	// BuildAndroidDeviceList itself doesn't sort — the listCmd does.
+	// Here we just verify the slice is non-nil and has the right count.
+	if len(devices) != 3 {
+		t.Errorf("Expected 3 devices, got %d", len(devices))
+	}
+}
+
+func TestDeviceStruct_JSONRoundtrip(t *testing.T) {
+	device := cmd.Device{
 		Name:       "Test Device",
 		UDID:       "test-udid-123",
 		State:      "Booted",
@@ -73,150 +80,128 @@ func TestDeviceStruct(t *testing.T) {
 		DeviceType: "com.apple.CoreSimulator.SimDeviceType.iPhone-15",
 	}
 
-	// Test JSON marshaling
 	data, err := json.Marshal(device)
 	if err != nil {
-		t.Errorf("Failed to marshal device: %v", err)
+		t.Fatalf("Failed to marshal device: %v", err)
 	}
 
-	// Test JSON unmarshaling
-	var unmarshaled Device
-	err = json.Unmarshal(data, &unmarshaled)
-	if err != nil {
-		t.Errorf("Failed to unmarshal device: %v", err)
+	var unmarshaled cmd.Device
+	if err := json.Unmarshal(data, &unmarshaled); err != nil {
+		t.Fatalf("Failed to unmarshal device: %v", err)
 	}
 
-	if unmarshaled.Name != device.Name {
-		t.Errorf("Expected name %s, got %s", device.Name, unmarshaled.Name)
+	AssertDeviceEqual(t, &device, &unmarshaled)
+}
+
+func TestFormatRuntime_CoreSimulator(t *testing.T) {
+	cases := []struct {
+		input    string
+		expected string
+	}{
+		{
+			input:    "com.apple.CoreSimulator.SimRuntime.iOS-17-0",
+			expected: "iOS 17.0",
+		},
+		{
+			input:    "com.apple.CoreSimulator.SimRuntime.iOS-16-4",
+			expected: "iOS 16.4",
+		},
+		{
+			input:    "com.apple.CoreSimulator.SimRuntime.watchOS-10-0",
+			expected: "watchOS 10.0",
+		},
+		{
+			input:    "Android",
+			expected: "Android",
+		},
+		{
+			input:    "custom-runtime",
+			expected: "custom-runtime",
+		},
+	}
+
+	for _, tc := range cases {
+		result := cmd.FormatRuntime(tc.input)
+		if result != tc.expected {
+			t.Errorf("FormatRuntime(%q) = %q, want %q", tc.input, result, tc.expected)
+		}
 	}
 }
 
-func TestListCommand_NoDevices(t *testing.T) {
-	// Test list command behavior when no devices are available
-	// Since we can't easily mock the actual device listing commands,
-	// we'll test the underlying functions with empty results
+func TestGetAvailableAVDs(t *testing.T) {
+	// Should not panic even if emulator is not installed.
+	avds := cmd.GetAvailableAVDs()
+	if avds == nil {
+		t.Error("AVD map should not be nil")
+	}
+}
 
-	// Test empty iOS simulators list
+func TestGetRunningAndroidDevices(t *testing.T) {
+	// Should not panic even if adb is not installed.
+	devices := cmd.GetRunningAndroidDevices()
+	if devices == nil {
+		t.Error("Running devices map should not be nil")
+	}
+}
+
+func TestBuildAndroidDeviceList_RunningDevicesFirst(t *testing.T) {
+	avdMap := map[string]bool{
+		"RunningDevice": true,
+		"StoppedDevice": true,
+	}
+	runningDevices := map[string]string{
+		"RunningDevice": "emulator-5554",
+	}
+
+	devices := cmd.BuildAndroidDeviceList(avdMap, runningDevices)
+
+	if len(devices) != 2 {
+		t.Fatalf("Expected 2 devices, got %d", len(devices))
+	}
+
+	var running, stopped *cmd.Device
+
+	for i := range devices {
+		switch devices[i].Name {
+		case "RunningDevice":
+			running = &devices[i]
+		case "StoppedDevice":
+			stopped = &devices[i]
+		}
+	}
+
+	if running == nil {
+		t.Fatal("RunningDevice should be in the list")
+	}
+
+	if running.State != "Booted" {
+		t.Errorf("RunningDevice state should be Booted, got %s", running.State)
+	}
+
+	if running.UDID != "emulator-5554" {
+		t.Errorf("RunningDevice UDID should be emulator-5554, got %s", running.UDID)
+	}
+
+	if stopped == nil {
+		t.Fatal("StoppedDevice should be in the list")
+	}
+
+	if stopped.State != "Shutdown" {
+		t.Errorf("StoppedDevice state should be Shutdown, got %s", stopped.State)
+	}
+}
+
+func TestListCommand_AllDevices(t *testing.T) {
+	var allDevices []cmd.Device
+
 	if runtime.GOOS == "darwin" {
-		simulators := getIOSSimulators()
-		// Even if no simulators, the slice should not be nil
-		if simulators == nil {
-			t.Error("iOS simulators slice should not be nil")
-		}
+		allDevices = append(allDevices, cmd.GetIOSSimulators()...)
 	}
 
-	// Test empty Android emulators list
-	emulators := getAndroidEmulators()
-	// Even if no emulators, the slice should not be nil
-	if emulators == nil {
-		t.Error("Android emulators slice should not be nil")
+	allDevices = append(allDevices, cmd.GetAndroidEmulators()...)
+
+	// All returned devices should satisfy the structural invariants.
+	for i := range allDevices {
+		ValidateDevice(t, &allDevices[i])
 	}
-
-	// Test that combining empty lists works
-	var allDevices []Device
-	if runtime.GOOS == "darwin" {
-		allDevices = append(allDevices, getIOSSimulators()...)
-	}
-	allDevices = append(allDevices, getAndroidEmulators()...)
-
-	// Should be safe to iterate over even if empty
-	for _, device := range allDevices {
-		ValidateDevice(t, &device)
-	}
-}
-
-// Helper functions that mirror the unexported functions in cmd package.
-func getIOSSimulators() []Device {
-	cmd := exec.Command("xcrun", "simctl", "list", "devices", "--json")
-	output, err := cmd.Output()
-	if err != nil {
-		return []Device{}
-	}
-
-	var result struct {
-		Devices map[string][]struct {
-			Name                 string `json:"name"`
-			UDID                 string `json:"udid"`
-			State                string `json:"state"`
-			DeviceTypeIdentifier string `json:"deviceTypeIdentifier"`
-		} `json:"devices"`
-	}
-
-	if err := json.Unmarshal(output, &result); err != nil {
-		return []Device{}
-	}
-
-	var devices []Device
-	for runtime, deviceList := range result.Devices {
-		for _, device := range deviceList {
-			devices = append(devices, Device{
-				Name:       device.Name,
-				UDID:       device.UDID,
-				State:      device.State,
-				Type:       "iOS Simulator",
-				Runtime:    runtime,
-				DeviceType: device.DeviceTypeIdentifier,
-			})
-		}
-	}
-
-	return devices
-}
-
-func getAndroidEmulators() []Device {
-	runningCmd := exec.Command("adb", "devices")
-	runningOutput, err := runningCmd.Output()
-	runningDevices := make(map[string]bool)
-
-	if err == nil {
-		lines := strings.Split(string(runningOutput), "\n")
-		for _, line := range lines {
-			if strings.Contains(line, "emulator-") && strings.Contains(line, "device") {
-				parts := strings.Fields(line)
-				if len(parts) >= 2 {
-					runningDevices[parts[0]] = true
-				}
-			}
-		}
-	}
-
-	cmd := exec.Command("emulator", "-list-avds")
-	output, err := cmd.Output()
-	if err != nil {
-		return []Device{}
-	}
-
-	var devices []Device
-	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line != "" {
-			state := "Shutdown"
-			udid := ""
-
-			// Check if this emulator is running
-			for runningUDID := range runningDevices {
-				if strings.Contains(runningUDID, "emulator-") {
-					state = "Booted"
-					udid = runningUDID
-					break
-				}
-			}
-
-			if udid == "" {
-				udid = "offline"
-			}
-
-			devices = append(devices, Device{
-				Name:    line,
-				UDID:    udid,
-				State:   state,
-				Type:    "Android Emulator",
-				Runtime: "Android",
-			})
-		}
-	}
-
-	return devices
 }

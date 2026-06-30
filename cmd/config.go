@@ -6,11 +6,13 @@ import (
 	"path/filepath"
 )
 
+// Config holds the application's persistent configuration.
 type Config struct {
 	LastStartedDevice *Device `json:"lastStartedDevice,omitempty"`
 }
 
-func getConfigDir() string {
+// GetConfigDir returns the path to the sim-cli configuration directory.
+func GetConfigDir() string {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return os.TempDir()
@@ -19,14 +21,16 @@ func getConfigDir() string {
 	return filepath.Join(homeDir, ".sim-cli")
 }
 
-func getConfigPath() string {
-	return filepath.Join(getConfigDir(), "config.json")
+// GetConfigPath returns the full path to the configuration file.
+func GetConfigPath() string {
+	return filepath.Join(GetConfigDir(), "config.json")
 }
 
-func loadConfig() (*Config, error) {
-	configPath := getConfigPath()
+// LoadConfig reads and returns the current application configuration.
+func LoadConfig() (*Config, error) {
+	configPath := GetConfigPath()
 
-	if err := os.MkdirAll(getConfigDir(), 0o755); err != nil {
+	if err := os.MkdirAll(GetConfigDir(), 0o755); err != nil {
 		return &Config{}, err
 	}
 
@@ -47,10 +51,11 @@ func loadConfig() (*Config, error) {
 	return &config, nil
 }
 
-func saveConfig(config *Config) error {
-	configPath := getConfigPath()
+// SaveConfig writes the given configuration to disk with secure permissions.
+func SaveConfig(config *Config) error {
+	configPath := GetConfigPath()
 
-	if err := os.MkdirAll(getConfigDir(), 0o755); err != nil {
+	if err := os.MkdirAll(GetConfigDir(), 0o755); err != nil {
 		return err
 	}
 
@@ -62,19 +67,21 @@ func saveConfig(config *Config) error {
 	return os.WriteFile(configPath, data, 0o600)
 }
 
-func saveLastStartedDevice(device *Device) error {
-	config, err := loadConfig()
+// SaveLastStartedDevice persists the last started device to the configuration file.
+func SaveLastStartedDevice(device *Device) error {
+	config, err := LoadConfig()
 	if err != nil {
 		config = &Config{}
 	}
 
 	config.LastStartedDevice = device
 
-	return saveConfig(config)
+	return SaveConfig(config)
 }
 
-func getLastStartedDevice() (*Device, error) {
-	config, err := loadConfig()
+// GetLastStartedDevice retrieves the last started device from the configuration file.
+func GetLastStartedDevice() (*Device, error) {
+	config, err := LoadConfig()
 	if err != nil {
 		return nil, err
 	}

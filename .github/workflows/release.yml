@@ -132,6 +132,7 @@ jobs:
           - `sim-darwin-amd64`: macOS Intel
           - `sim-darwin-arm64`: macOS Apple Silicon  
           - `sim-linux-amd64`: Linux x64
+          - `sim-windows-amd64.exe`: Windows x64
         files: |
           release-files/*
         draft: false

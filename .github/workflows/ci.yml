@@ -9,8 +9,11 @@ on:
 jobs:
   ci:
     name: Build and Test
-    runs-on: ubuntu-latest
-    
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -39,8 +42,8 @@ jobs:
         version: latest
         args: --timeout=5m
 
-    - name: Run tests
-      run: go test ./tests/
+    - name: Run tests with race detection
+      run: go test -race ./tests/
 
     - name: Build application
       run: make build

@@ -1,23 +1,26 @@
 package tests
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/annurdien/sim-cli/cmd"
 )
 
-func TestConfigDir(t *testing.T) {
-	// Test that config directory is properly determined
-	configDir := getConfigDir()
+func TestGetConfigDir(t *testing.T) {
+	_ = NewTestHelpers(t) // sets up temp HOME via t.Setenv
+
+	configDir := cmd.GetConfigDir()
 	if configDir == "" {
 		t.Error("Config directory should not be empty")
 	}
 }
 
-func TestConfigPath(t *testing.T) {
-	// Test that config path is properly constructed
-	configPath := getConfigPath()
+func TestGetConfigPath(t *testing.T) {
+	_ = NewTestHelpers(t)
+
+	configPath := cmd.GetConfigPath()
 	if configPath == "" {
 		t.Error("Config path should not be empty")
 	}
@@ -28,14 +31,9 @@ func TestConfigPath(t *testing.T) {
 }
 
 func TestLoadConfig_NonExistent(t *testing.T) {
-	// Test loading config when file doesn't exist
-	tempDir := t.TempDir()
-	originalHome := os.Getenv("HOME")
-	defer os.Setenv("HOME", originalHome)
+	_ = NewTestHelpers(t)
 
-	os.Setenv("HOME", tempDir)
-
-	config, err := loadConfig()
+	config, err := cmd.LoadConfig()
 	if err != nil {
 		t.Errorf("Expected no error for non-existent config, got: %v", err)
 	}
@@ -46,15 +44,9 @@ func TestLoadConfig_NonExistent(t *testing.T) {
 }
 
 func TestSaveAndLoadConfig(t *testing.T) {
-	// Test saving and loading a config
-	tempDir := t.TempDir()
-	originalHome := os.Getenv("HOME")
-	defer os.Setenv("HOME", originalHome)
+	_ = NewTestHelpers(t)
 
-	os.Setenv("HOME", tempDir)
-
-	// Create a test device
-	testDevice := &Device{
+	testDevice := &cmd.Device{
 		Name:    "Test Device",
 		UDID:    "test-udid-123",
 		Type:    "iOS Simulator",
@@ -62,20 +54,17 @@ func TestSaveAndLoadConfig(t *testing.T) {
 		Runtime: "iOS 17.0",
 	}
 
-	// Save the device as last started
-	err := saveLastStartedDevice(testDevice)
-	if err != nil {
-		t.Errorf("Failed to save last started device: %v", err)
+	if err := cmd.SaveLastStartedDevice(testDevice); err != nil {
+		t.Fatalf("Failed to save last started device: %v", err)
 	}
 
-	// Load the config and verify
-	config, err := loadConfig()
+	config, err := cmd.LoadConfig()
 	if err != nil {
-		t.Errorf("Failed to load config: %v", err)
+		t.Fatalf("Failed to load config: %v", err)
 	}
 
 	if config.LastStartedDevice == nil {
-		t.Error("Last started device should not be nil")
+		t.Fatal("Last started device should not be nil")
 	}
 
 	if config.LastStartedDevice.Name != testDevice.Name {
@@ -83,109 +72,84 @@ func TestSaveAndLoadConfig(t *testing.T) {
 	}
 }
 
-func TestSaveConfig_InvalidData(t *testing.T) {
-	// Test saving invalid config data
-	tempDir := t.TempDir()
-	originalHome := os.Getenv("HOME")
-	defer os.Setenv("HOME", originalHome)
+func TestSaveConfig_EmptyConfig(t *testing.T) {
+	_ = NewTestHelpers(t)
 
-	os.Setenv("HOME", tempDir)
+	config := &cmd.Config{}
 
-	// This should not fail as our Config struct is simple
-	config := &Config{}
-	err := saveConfig(config)
-	if err != nil {
+	if err := cmd.SaveConfig(config); err != nil {
 		t.Errorf("Should be able to save empty config: %v", err)
 	}
 }
 
 func TestLoadConfig_CorruptedFile(t *testing.T) {
-	// Test loading a corrupted config file
-	tempDir := t.TempDir()
-	originalHome := os.Getenv("HOME")
-	defer os.Setenv("HOME", originalHome)
+	h := NewTestHelpers(t)
 
-	os.Setenv("HOME", tempDir)
+	// Write invalid JSON directly into the config location.
+	configDir := filepath.Join(h.TempDir, ".sim-cli")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("Failed to create config dir: %v", err)
+	}
 
-	// Create corrupted config file
-	configDir := filepath.Join(tempDir, ".sim-cli")
-	_ = os.MkdirAll(configDir, 0o755)
 	configPath := filepath.Join(configDir, "config.json")
+	if err := os.WriteFile(configPath, []byte("invalid json {"), 0o644); err != nil {
+		t.Fatalf("Failed to write corrupted config: %v", err)
+	}
 
-	// Write invalid JSON
-	_ = os.WriteFile(configPath, []byte("invalid json {"), 0o644)
-
-	config, err := loadConfig()
+	config, err := cmd.LoadConfig()
 	if err == nil {
 		t.Error("Expected error for corrupted config file")
 	}
 
-	// Should return empty config on error
 	if config == nil {
 		t.Error("Config should not be nil even on error")
 	}
 }
 
-// Helper functions that mirror the unexported functions in cmd package.
-func getConfigDir() string {
-	homeDir, err := os.UserHomeDir()
+func TestGetLastStartedDevice_Empty(t *testing.T) {
+	_ = NewTestHelpers(t)
+
+	device, err := cmd.GetLastStartedDevice()
 	if err != nil {
-		return os.TempDir()
+		t.Errorf("Expected no error for empty config, got: %v", err)
 	}
 
-	return filepath.Join(homeDir, ".sim-cli")
+	if device != nil {
+		t.Error("Expected nil device when none has been saved")
+	}
 }
 
-func getConfigPath() string {
-	return filepath.Join(getConfigDir(), "config.json")
+func TestSaveAndGetLastStartedDevice(t *testing.T) {
+	_ = NewTestHelpers(t)
+
+	testDevice := CreateTestDevice("roundtrip-device")
+
+	if err := cmd.SaveLastStartedDevice(testDevice); err != nil {
+		t.Fatalf("Failed to save device: %v", err)
+	}
+
+	retrieved, err := cmd.GetLastStartedDevice()
+	if err != nil {
+		t.Fatalf("Failed to get last device: %v", err)
+	}
+
+	AssertDeviceEqual(t, testDevice, retrieved)
 }
 
-func loadConfig() (*Config, error) {
-	configPath := getConfigPath()
+func TestConfigFilePermissions(t *testing.T) {
+	_ = NewTestHelpers(t)
 
-	if err := os.MkdirAll(getConfigDir(), 0o755); err != nil {
-		return &Config{}, err
+	if err := cmd.SaveLastStartedDevice(CreateTestDevice("perm-test")); err != nil {
+		t.Fatalf("Failed to save device: %v", err)
 	}
 
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		return &Config{}, nil
-	}
-
-	data, err := os.ReadFile(configPath)
+	info, err := os.Stat(cmd.GetConfigPath())
 	if err != nil {
-		return &Config{}, err
+		t.Fatalf("Failed to stat config file: %v", err)
 	}
 
-	var config Config
-	if err := json.Unmarshal(data, &config); err != nil {
-		return &Config{}, err
+	// Config file must be owner read/write only (0600).
+	if info.Mode().Perm() != 0o600 {
+		t.Errorf("Expected config file permissions 0600, got %o", info.Mode().Perm())
 	}
-
-	return &config, nil
-}
-
-func saveConfig(config *Config) error {
-	configPath := getConfigPath()
-
-	if err := os.MkdirAll(getConfigDir(), 0o755); err != nil {
-		return err
-	}
-
-	data, err := json.MarshalIndent(config, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	return os.WriteFile(configPath, data, 0o644)
-}
-
-func saveLastStartedDevice(device *Device) error {
-	config, err := loadConfig()
-	if err != nil {
-		config = &Config{}
-	}
-
-	config.LastStartedDevice = device
-
-	return saveConfig(config)
 }
