@@ -7,7 +7,7 @@ import (
 )
 
 // Version is the current release version of SIM-CLI.
-const Version = "1.2.0"
+var Version = "dev"
 
 const asciiArt = `
  ███████╗██╗███╗   ███╗      ██████╗██╗     ██╗

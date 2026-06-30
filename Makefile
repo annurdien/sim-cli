@@ -3,17 +3,21 @@
 # Default target
 all: build
 
+# Extract version from config.yaml
+VERSION := $(shell grep 'version:' config.yaml | awk '{print $$2}' | tr -d '"')
+LDFLAGS := -ldflags "-X github.com/annurdien/sim-cli/cmd.Version=$(VERSION)"
+
 # Build the application
 build:
-	go build -o sim
+	go build $(LDFLAGS) -o sim
 
 # Build for multiple platforms
 build-all:
 	mkdir -p dist
-	GOOS=darwin GOARCH=amd64 go build -o dist/sim-darwin-amd64
-	GOOS=darwin GOARCH=arm64 go build -o dist/sim-darwin-arm64
-	GOOS=linux GOARCH=amd64 go build -o dist/sim-linux-amd64
-	GOOS=windows GOARCH=amd64 go build -o dist/sim-windows-amd64.exe
+	GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o dist/sim-darwin-amd64
+	GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) -o dist/sim-darwin-arm64
+	GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o dist/sim-linux-amd64
+	GOOS=windows GOARCH=amd64 go build $(LDFLAGS) -o dist/sim-windows-amd64.exe
 
 # Clean build artifacts
 clean:

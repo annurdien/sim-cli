@@ -104,11 +104,11 @@ jobs:
         path: release-files/
         merge-multiple: true
         
-    - name: Extract version from commit message
+    - name: Extract version from config.yaml
       id: version
       run: |
-        COMMIT_MSG=$(git log -1 --pretty=%B)
-        VERSION=$(echo "$COMMIT_MSG" | grep -o 'release:[[:space:]]*v[0-9]\+\.[0-9]\+\.[0-9]\+' | sed 's/release:[[:space:]]*//' || echo "v$(date +%Y%m%d-%H%M%S)")
+        VERSION_RAW=$(grep 'version:' config.yaml | awk '{print $2}' | tr -d '"')
+        VERSION="v$VERSION_RAW"
         echo "version=$VERSION" >> $GITHUB_OUTPUT
         echo "Extracted version: $VERSION"
 
@@ -144,11 +144,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Extract version from commit message
+      - name: Extract version from config.yaml
         id: version
         run: |
-          COMMIT_MSG=$(git log -1 --pretty=%B)
-          VERSION=$(echo "$COMMIT_MSG" | grep -o 'release:[[:space:]]*v[0-9]\+\.[0-9]\+\.[0-9]\+' | sed 's/release:[[:space:]]*//' || echo "v$(date +%Y%m%d-%H%M%S)")
+          VERSION_RAW=$(grep 'version:' config.yaml | awk '{print $2}' | tr -d '"')
+          VERSION="v$VERSION_RAW"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Calculate SHA256 for macOS AMD64
