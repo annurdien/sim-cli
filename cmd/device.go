@@ -177,7 +177,7 @@ func startDevice(deviceID string) error {
 	if deviceID == "lts" {
 		lastDevice, err := GetLastStartedDevice()
 		if err != nil || lastDevice == nil {
-			return errors.New("no last started device found; start a device first to use 'lts'")
+			return ErrNoLastDevice
 		}
 
 		fmt.Printf("Starting last device: %s (%s)\n", lastDevice.Name, lastDevice.Type)

@@ -21,4 +21,6 @@ var (
 	ErrDeviceNotFound = errors.New("device not found")
 	// ErrInvalidDuration is returned when a recording duration value is invalid.
 	ErrInvalidDuration = errors.New("invalid recording duration")
+	// ErrNoLastDevice is returned when no last started device configuration is found.
+	ErrNoLastDevice = errors.New("no last started device found; start a device first to use 'lts'")
 )
