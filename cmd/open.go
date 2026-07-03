@@ -49,6 +49,7 @@ func openIOSUrl(deviceID, url string) (bool, error) {
 	}
 
 	fmt.Println("URL opened successfully.")
+
 	return true, nil
 }
 
@@ -69,5 +70,6 @@ func openAndroidUrl(deviceID, url string) (bool, error) {
 	}
 
 	fmt.Println("URL opened successfully.")
+
 	return true, nil
 }
