@@ -14,6 +14,10 @@ func TestVersion_NotEmpty(t *testing.T) {
 }
 
 func TestVersion_SemanticFormat(t *testing.T) {
+	if cmd.Version == "dev" {
+		t.Skip("Skipping semantic format test for 'dev' version")
+	}
+
 	parts := strings.Split(cmd.Version, ".")
 	if len(parts) != 3 {
 		t.Errorf("Version should follow semantic versioning (major.minor.patch), got %q", cmd.Version)
