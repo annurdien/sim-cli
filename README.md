@@ -85,8 +85,8 @@ sim start "iPhone 15 Pro"
 # 4. Take a screenshot and copy it to the clipboard
 sim screenshot "iPhone 15 Pro" --copy
 
-# 5. Open a deeplink or URL on the running device
-sim open "iPhone 15 Pro" "myapp://home"
+# 5. Open a deeplink or URL (auto-selects first booted device)
+sim open "myapp://home"
 
 # 6. Record a 10-second GIF
 sim record "iPhone 15 Pro" --duration 10 --gif
@@ -116,7 +116,7 @@ sim last
 | `shutdown <device>` | `sd` | Shutdown a simulator or emulator. |
 | `restart <device>` | `r` | Restart a simulator or emulator. |
 | `delete <device>` | `d`, `del` | **Permanently** delete a simulator or emulator. |
-| `open <device> <url>` | `o` | Open a deeplink or URL on a running simulator/emulator. |
+| `open [device] <url>` | `o` | Open a deeplink or URL. Device is optional — defaults to the first booted device. |
 | `screenshot <device> [file]` | `ss`, `shot` | Take a screenshot of a device. |
 | `record <device> [file]` | `rec` | Record the screen of a device. |
 | `last` | - | Show the last used device. |
@@ -140,14 +140,16 @@ sim last
 
 ### open Options
 
-The `open` command accepts any valid URL or custom URI scheme:
+The `open` command accepts any valid URL or custom URI scheme. The device argument is optional:
 
 ```bash
-# Open a web URL in the default browser
-sim open "iPhone 15 Pro" "https://example.com"
+# Auto-select the first booted device
+sim open "myapp://settings"
+sim o "https://example.com"
 
-# Trigger a custom app deeplink
-sim open "Pixel_7_API_34" "myapp://settings/notifications"
+# Target a specific device
+sim open "iPhone 15 Pro" "myapp://settings"
+sim open "Pixel_7_API_34" "https://example.com"
 ```
 
 ## Configuration
