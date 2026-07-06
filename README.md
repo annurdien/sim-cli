@@ -167,7 +167,7 @@ The project-level `config.yaml` in the repository root defines the release versi
 ```yaml
 app:
   name: "sim-cli"
-  version: "1.6.0"
+  version: "1.7.0"
   description: "CLI tool to manage iOS simulators and Android emulators"
 ```
 
