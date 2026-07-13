@@ -2,9 +2,7 @@ package cmd
 
 import (
 	"fmt"
-	"os/exec"
 	"runtime"
-	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -68,7 +66,7 @@ func openIOSUrl(deviceID, url string) (bool, error) {
 		sims := GetIOSSimulators()
 		found := false
 		for i := range sims {
-			if strings.Contains(strings.ToLower(sims[i].State), "booted") {
+			if sims[i].State == StateBooted {
 				udid = sims[i].UDID
 				name = sims[i].Name
 				found = true
@@ -81,7 +79,7 @@ func openIOSUrl(deviceID, url string) (bool, error) {
 		}
 	} else {
 		device := FindIOSSimulatorByID(deviceID)
-		if device == nil || !strings.Contains(strings.ToLower(device.State), "booted") {
+		if device == nil || device.State != StateBooted {
 			return false, nil
 		}
 		udid = device.UDID
@@ -89,9 +87,8 @@ func openIOSUrl(deviceID, url string) (bool, error) {
 	}
 
 	fmt.Printf("Opening URL on iOS simulator '%s'...\n", name)
-	cmd := exec.Command(CmdXCrun, CmdSimctl, "openurl", udid, url)
 
-	if output, err := cmd.CombinedOutput(); err != nil {
+	if output, err := packageExecutor.Output(CmdXCrun, CmdSimctl, "openurl", udid, url); err != nil {
 		return true, fmt.Errorf("failed to open URL on iOS simulator: %w\nOutput: %s", err, string(output))
 	}
 
@@ -111,9 +108,8 @@ func openAndroidUrl(deviceID, url string) (bool, error) {
 
 	fmt.Printf("Opening URL on Android emulator '%s'...\n", name)
 	cmdArgs := []string{"-s", udid, "shell", "am", "start", "-a", "android.intent.action.VIEW", "-d", url}
-	cmd := exec.Command(CmdAdb, cmdArgs...)
 
-	if output, err := cmd.CombinedOutput(); err != nil {
+	if output, err := packageExecutor.Output(CmdAdb, cmdArgs...); err != nil {
 		return true, fmt.Errorf("failed to open URL on Android emulator: %w\nOutput: %s", err, string(output))
 	}
 

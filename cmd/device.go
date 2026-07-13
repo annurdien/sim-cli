@@ -2,9 +2,9 @@ package cmd
 
 import (
 	"fmt"
-	"os/exec"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -19,7 +19,8 @@ var startCmd = &cobra.Command{
 Use 'lts' to start the last started device.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return startDevice(args[0])
+		noWait, _ := cmd.Flags().GetBool("no-wait")
+		return startDevice(args[0], noWait)
 	},
 }
 
@@ -165,14 +166,15 @@ var ltsCmd = &cobra.Command{
 	Short: "Start the last started device",
 	Long:  `Start the last started device quickly. This is a shortcut for 'sim start lts'.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return startDevice("lts")
+		return startDevice("lts", false)
 	},
 }
 
 // --- Shared Start Logic ---
 
 // startDevice handles the 'start' action for both startCmd and ltsCmd.
-func startDevice(deviceID string) error {
+// noWait skips the Android boot-wait polling when true.
+func startDevice(deviceID string, noWait bool) error {
 	if deviceID == "lts" {
 		lastDevice, err := GetLastStartedDevice()
 		if err != nil || lastDevice == nil {
@@ -189,7 +191,7 @@ func startDevice(deviceID string) error {
 		}
 	}
 
-	if found, err := startAndroidEmulator(deviceID); found {
+	if found, err := startAndroidEmulator(deviceID, noWait); found {
 		return err
 	}
 
@@ -207,14 +209,12 @@ func startIOSSimulator(deviceID string) (bool, error) {
 	}
 
 	fmt.Printf("Starting iOS simulator '%s'...\n", deviceID)
-	bootCmd := exec.Command(CmdXCrun, CmdSimctl, "boot", device.UDID)
 
-	if err := bootCmd.Run(); err != nil {
+	if err := packageExecutor.Run(CmdXCrun, CmdSimctl, "boot", device.UDID); err != nil {
 		return true, fmt.Errorf("failed to boot iOS simulator '%s': %w", deviceID, err)
 	}
 
-	openCmd := exec.Command("open", "-a", "Simulator")
-	if err := openCmd.Run(); err != nil {
+	if err := packageExecutor.Run("open", "-a", "Simulator"); err != nil {
 		fmt.Printf("Warning: could not open Simulator app: %v\n", err)
 	}
 
@@ -237,9 +237,8 @@ func stopIOSSimulator(deviceID string) (bool, error) {
 	}
 
 	fmt.Printf("Stopping iOS simulator '%s'...\n", deviceID)
-	cmd := exec.Command(CmdXCrun, CmdSimctl, "shutdown", device.UDID)
 
-	if err := cmd.Run(); err != nil {
+	if err := packageExecutor.Run(CmdXCrun, CmdSimctl, "shutdown", device.UDID); err != nil {
 		return true, fmt.Errorf("failed to stop iOS simulator '%s': %w", deviceID, err)
 	}
 
@@ -263,16 +262,13 @@ func restartIOSSimulator(deviceID string) (bool, error) {
 
 	fmt.Printf("Restarting iOS simulator '%s'...\n", deviceID)
 
-	shutdownCmd := exec.Command(CmdXCrun, CmdSimctl, "shutdown", device.UDID)
-	_ = shutdownCmd.Run() // Ignore error if already shut down.
+	_ = packageExecutor.Run(CmdXCrun, CmdSimctl, "shutdown", device.UDID) // Ignore error if already shut down.
 
-	bootCmd := exec.Command(CmdXCrun, CmdSimctl, "boot", device.UDID)
-	if err := bootCmd.Run(); err != nil {
+	if err := packageExecutor.Run(CmdXCrun, CmdSimctl, "boot", device.UDID); err != nil {
 		return true, fmt.Errorf("failed to boot iOS simulator '%s' during restart: %w", deviceID, err)
 	}
 
-	openCmd := exec.Command("open", "-a", "Simulator")
-	if err := openCmd.Run(); err != nil {
+	if err := packageExecutor.Run("open", "-a", "Simulator"); err != nil {
 		fmt.Printf("Warning: could not open Simulator app: %v\n", err)
 	}
 
@@ -296,11 +292,9 @@ func deleteIOSSimulator(deviceID string) (bool, error) {
 
 	fmt.Printf("Deleting iOS simulator '%s'...\n", deviceID)
 
-	shutdownCmd := exec.Command(CmdXCrun, CmdSimctl, "shutdown", device.UDID)
-	_ = shutdownCmd.Run()
+	_ = packageExecutor.Run(CmdXCrun, CmdSimctl, "shutdown", device.UDID)
 
-	deleteCmd := exec.Command(CmdXCrun, CmdSimctl, "delete", device.UDID)
-	if err := deleteCmd.Run(); err != nil {
+	if err := packageExecutor.Run(CmdXCrun, CmdSimctl, "delete", device.UDID); err != nil {
 		return true, fmt.Errorf("failed to delete iOS simulator '%s': %w", deviceID, err)
 	}
 
@@ -311,9 +305,16 @@ func deleteIOSSimulator(deviceID string) (bool, error) {
 
 // --- Android Emulator Operations ---
 
+// androidBootTimeout is the maximum time to wait for an Android emulator to finish booting.
+const androidBootTimeout = 120 * time.Second
+
+// androidBootPollInterval is how often to poll boot status.
+const androidBootPollInterval = 3 * time.Second
+
 // startAndroidEmulator starts an Android emulator.
+// noWait skips boot polling and returns immediately after launching the process.
 // Returns (true, nil) on success, (true, err) if found but start failed, (false, nil) if not found.
-func startAndroidEmulator(deviceID string) (bool, error) {
+func startAndroidEmulator(deviceID string, noWait bool) (bool, error) {
 	if IsAndroidEmulatorRunning(deviceID) {
 		fmt.Printf("Android emulator '%s' is already running\n", deviceID)
 
@@ -336,16 +337,43 @@ func startAndroidEmulator(deviceID string) (bool, error) {
 	}
 
 	fmt.Printf("Starting Android emulator '%s'...\n", deviceID)
-	cmd := exec.Command(CmdEmulator, "-avd", deviceID)
 
-	if err := cmd.Start(); err != nil {
+	_, err := packageExecutor.Start(CmdEmulator, "-avd", deviceID)
+	if err != nil {
 		return true, fmt.Errorf("failed to start Android emulator '%s': %w", deviceID, err)
 	}
 
-	// The UDID is assigned by adb once the emulator boots; save a placeholder.
+	if noWait {
+		// Fire-and-forget: save a placeholder UDID and return immediately.
+		device := &Device{
+			Name:  deviceID,
+			UDID:  "starting",
+			Type:  TypeAndroidEmulator,
+			State: StateBooted,
+		}
+		if err := SaveLastStartedDevice(device); err != nil {
+			fmt.Printf("Warning: could not save last started device: %v\n", err)
+		}
+
+		fmt.Printf("Android emulator '%s' launched (--no-wait: skipping boot check)\n", deviceID)
+
+		return true, nil
+	}
+
+	// Wait for the emulator to fully boot and resolve its real UDID.
+	fmt.Printf("Waiting for Android emulator '%s' to boot...\n", deviceID)
+
+	udid, bootErr := waitForAndroidBoot(deviceID)
+	if bootErr != nil {
+		// Non-fatal: emulator may still be booting. Save placeholder and warn.
+		fmt.Printf("Warning: emulator may still be booting: %v\n", bootErr)
+		fmt.Printf("Use 'sim last' to check the saved device once it finishes booting.\n")
+		udid = "starting"
+	}
+
 	device := &Device{
 		Name:  deviceID,
-		UDID:  "starting",
+		UDID:  udid,
 		Type:  TypeAndroidEmulator,
 		State: StateBooted,
 	}
@@ -353,9 +381,37 @@ func startAndroidEmulator(deviceID string) (bool, error) {
 		fmt.Printf("Warning: could not save last started device: %v\n", err)
 	}
 
-	fmt.Printf("Android emulator '%s' started successfully\n", deviceID)
+	if bootErr == nil {
+		fmt.Printf("Android emulator '%s' started successfully (serial: %s)\n", deviceID, udid)
+	}
 
 	return true, nil
+}
+
+// waitForAndroidBoot polls adb until the emulator with the given AVD name has
+// fully booted (sys.boot_completed == 1). Returns the emulator serial (UDID).
+func waitForAndroidBoot(avdName string) (string, error) {
+	deadline := time.Now().Add(androidBootTimeout)
+
+	for time.Now().Before(deadline) {
+		udid, _ := FindRunningAndroidEmulator(avdName)
+		if udid != "" {
+			// Check if the system has fully booted.
+			out, err := packageExecutor.Output(CmdAdb, "-s", udid, "shell", "getprop", "sys.boot_completed")
+			if err == nil && strings.TrimSpace(string(out)) == "1" {
+				return udid, nil
+			}
+		}
+
+		time.Sleep(androidBootPollInterval)
+	}
+
+	// Last attempt: maybe it booted right at the deadline.
+	if udid, _ := FindRunningAndroidEmulator(avdName); udid != "" {
+		return udid, nil
+	}
+
+	return "starting", fmt.Errorf("timed out waiting for Android emulator '%s' to boot after %s", avdName, androidBootTimeout)
 }
 
 // stopAndroidEmulator kills a running Android emulator.
@@ -367,9 +423,8 @@ func stopAndroidEmulator(deviceID string) (bool, error) {
 	}
 
 	fmt.Printf("Stopping Android emulator '%s'...\n", deviceID)
-	cmd := exec.Command(CmdAdb, "-s", udid, "emu", "kill")
 
-	if err := cmd.Run(); err != nil {
+	if err := packageExecutor.Run(CmdAdb, "-s", udid, "emu", "kill"); err != nil {
 		return true, fmt.Errorf("failed to stop Android emulator '%s': %w", deviceID, err)
 	}
 
@@ -385,7 +440,7 @@ func restartAndroidEmulator(deviceID string) (bool, error) {
 
 	_, _ = stopAndroidEmulator(deviceID)
 
-	return startAndroidEmulator(deviceID)
+	return startAndroidEmulator(deviceID, false)
 }
 
 // deleteAndroidEmulator removes an Android AVD permanently.
@@ -399,8 +454,7 @@ func deleteAndroidEmulator(deviceID string) (bool, error) {
 
 	_, _ = stopAndroidEmulator(deviceID)
 
-	cmd := exec.Command(CmdAvdManager, "delete", "avd", "-n", deviceID)
-	if err := cmd.Run(); err != nil {
+	if err := packageExecutor.Run(CmdAvdManager, "delete", "avd", "-n", deviceID); err != nil {
 		return true, fmt.Errorf("failed to delete Android emulator '%s': %w", deviceID, err)
 	}
 
@@ -427,8 +481,7 @@ func FindIOSSimulatorByID(deviceID string) *Device {
 // FindRunningAndroidEmulator finds a running emulator by AVD name.
 // Pass an empty string to find any running emulator.
 func FindRunningAndroidEmulator(avdName string) (string, string) {
-	cmd := exec.Command(CmdAdb, "devices")
-	output, err := cmd.Output()
+	output, err := packageExecutor.Output(CmdAdb, "devices")
 	if err != nil {
 		return "", ""
 	}
@@ -439,8 +492,7 @@ func FindRunningAndroidEmulator(avdName string) (string, string) {
 			parts := strings.Fields(line)
 			if len(parts) > 0 {
 				emulatorID := parts[0]
-				nameCmd := exec.Command(CmdAdb, "-s", emulatorID, "emu", "avd", "name")
-				nameOutput, nameErr := nameCmd.Output()
+				nameOutput, nameErr := packageExecutor.Output(CmdAdb, "-s", emulatorID, "emu", "avd", "name")
 
 				if nameErr == nil {
 					nameLines := strings.SplitSeq(strings.TrimSpace(string(nameOutput)), "\n")
@@ -468,8 +520,7 @@ func FindRunningAndroidEmulator(avdName string) (string, string) {
 
 // DoesAndroidAVDExist checks whether an AVD with the given name is defined.
 func DoesAndroidAVDExist(avdName string) bool {
-	cmd := exec.Command(CmdEmulator, "-list-avds")
-	output, err := cmd.Output()
+	output, err := packageExecutor.Output(CmdEmulator, "-list-avds")
 	if err != nil {
 		return false
 	}

@@ -70,6 +70,9 @@ func init() {
 	// deleteCmd flags
 	deleteCmd.Flags().BoolP("force", "f", false, "Skip confirmation prompt")
 
+	// startCmd flags
+	startCmd.Flags().Bool("no-wait", false, "Skip waiting for Android emulator to fully boot (fire-and-forget)")
+
 	// screenshotCmd flags
 	screenshotCmd.Flags().BoolP("copy", "c", false, "Copy the screenshot to the clipboard")
 	screenshotCmd.Flags().String("output-dir", "", "Directory to save the screenshot (default: current directory)")

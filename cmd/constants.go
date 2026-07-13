@@ -18,6 +18,7 @@ const (
 	CmdAvdManager       = "avdmanager"
 	CmdFFmpeg           = "ffmpeg"
 	CmdOsaScript        = "osascript"
+	CmdXclip            = "xclip"
 	PrefixScreenshot    = "screenshot"
 	PrefixRecording     = "recording"
 )
