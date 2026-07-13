@@ -112,16 +112,16 @@ func InstallApp(deviceID, appPath string) error {
 
 	if isAndroid {
 		err = RunSpinner(fmt.Sprintf("Installing %s on Android emulator '%s'...", filepath.Base(appPath), name), func() error {
-			if output, errExec := packageExecutor.Output(CmdAdb, "-s", udid, "install", appPath); errExec != nil {
-				return fmt.Errorf("%w on Android emulator: %w\nOutput: %s", ErrInstallFailed, errExec, string(output))
+			if errExec := packageExecutor.Run(CmdAdb, "-s", udid, "install", appPath); errExec != nil {
+				return fmt.Errorf("%w on Android emulator: %w", ErrInstallFailed, errExec)
 			}
 
 			return nil
 		})
 	} else {
 		err = RunSpinner(fmt.Sprintf("Installing %s on iOS simulator '%s'...", filepath.Base(appPath), name), func() error {
-			if output, errExec := packageExecutor.Output(CmdXCrun, CmdSimctl, "install", udid, appPath); errExec != nil {
-				return fmt.Errorf("%w on iOS simulator: %w\nOutput: %s", ErrInstallFailed, errExec, string(output))
+			if errExec := packageExecutor.Run(CmdXCrun, CmdSimctl, "install", udid, appPath); errExec != nil {
+				return fmt.Errorf("%w on iOS simulator: %w", ErrInstallFailed, errExec)
 			}
 
 			return nil
@@ -173,16 +173,16 @@ func UninstallApp(deviceID, appID string) error {
 
 	if isAndroid {
 		err = RunSpinner(fmt.Sprintf("Uninstalling %s from Android emulator '%s'...", appID, name), func() error {
-			if output, errExec := packageExecutor.Output(CmdAdb, "-s", udid, "uninstall", appID); errExec != nil {
-				return fmt.Errorf("%w on Android emulator: %w\nOutput: %s", ErrUninstallFailed, errExec, string(output))
+			if errExec := packageExecutor.Run(CmdAdb, "-s", udid, "uninstall", appID); errExec != nil {
+				return fmt.Errorf("%w on Android emulator: %w", ErrUninstallFailed, errExec)
 			}
 
 			return nil
 		})
 	} else {
 		err = RunSpinner(fmt.Sprintf("Uninstalling %s from iOS simulator '%s'...", appID, name), func() error {
-			if output, errExec := packageExecutor.Output(CmdXCrun, CmdSimctl, "uninstall", udid, appID); errExec != nil {
-				return fmt.Errorf("%w on iOS simulator: %w\nOutput: %s", ErrUninstallFailed, errExec, string(output))
+			if errExec := packageExecutor.Run(CmdXCrun, CmdSimctl, "uninstall", udid, appID); errExec != nil {
+				return fmt.Errorf("%w on iOS simulator: %w", ErrUninstallFailed, errExec)
 			}
 
 			return nil

@@ -1,6 +1,10 @@
 package cmd
 
-import "os/exec"
+import (
+	"fmt"
+	"os/exec"
+	"strings"
+)
 
 // CommandExecutor abstracts external command execution for testability.
 type CommandExecutor interface {
@@ -28,7 +32,18 @@ func (e *OSCommandExecutor) Output(name string, args ...string) ([]byte, error) 
 
 // Run runs a command and waits for it to complete.
 func (e *OSCommandExecutor) Run(name string, args ...string) error {
-	return exec.Command(name, args...).Run()
+	out, err := exec.Command(name, args...).CombinedOutput()
+	if err != nil {
+		if len(out) > 0 {
+			// Trim any trailing newlines to make the error look cleaner
+			cleanOut := strings.TrimSpace(string(out))
+			return fmt.Errorf("%w\nOutput: %s", err, cleanOut)
+		}
+
+		return err
+	}
+
+	return nil
 }
 
 // Start starts a command without waiting for it to complete.
