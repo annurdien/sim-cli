@@ -13,6 +13,7 @@ type Config struct {
 	OutputDir         string  `json:"outputDir,omitempty"`
 	GifFps            int     `json:"gifFps,omitempty"`
 	GifScale          int     `json:"gifScale,omitempty"`
+	Theme             string  `json:"theme,omitempty"`
 }
 
 // GetConfigDir returns the path to the sim-cli configuration directory.

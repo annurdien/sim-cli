@@ -52,16 +52,10 @@ var listCmd = &cobra.Command{
 			return devices[i].Name < devices[j].Name
 		})
 
-		var rows [][]string
-		for _, device := range devices {
-			runtimeVal := FormatRuntime(device.Runtime)
-			platform := FormatPlatform(device.Type)
-			state := FormatState(device.State)
-			rows = append(rows, []string{platform, device.Name, state, device.UDID, runtimeVal})
+		err := runDashboard(devices)
+		if err != nil {
+			PrintError(fmt.Sprintf("Dashboard error: %v", err))
 		}
-
-		headers := []string{"Type", "Name", "State", "UDID", "Runtime"}
-		RenderTable(headers, rows)
 	},
 }
 
