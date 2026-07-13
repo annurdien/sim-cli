@@ -107,13 +107,17 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.loading = true
 				m.msg = "Stopping " + row[1] + "..."
 				cmds = append(cmds, doActionCmd(func() error {
-					if row[0] == "iOS Simulator" || row[0] == TypeIOSSimulator {
-						_, err := shutdownIOSSimulator(deviceID)
-						return err
+					for _, m := range GetManagers() {
+						found, err := m.Stop(deviceID)
+						if err != nil {
+							return err
+						}
+						if found {
+							return nil
+						}
 					}
-					_, err := stopAndroidEmulator(deviceID)
 
-					return err
+					return ErrDeviceNotFound
 				}, "Stopped "+row[1]))
 			}
 		case "r":
