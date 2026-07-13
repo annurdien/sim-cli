@@ -17,7 +17,8 @@ var startCmd = &cobra.Command{
 	Short:   "Start an iOS simulator or Android emulator",
 	Long: `Start a specific iOS simulator or Android emulator by name or UDID.
 Use 'lts' to start the last started device.`,
-	Args: cobra.ExactArgs(1),
+	ValidArgsFunction: validDeviceArgs,
+	Args:              cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		noWait, _ := cmd.Flags().GetBool("no-wait")
 		return startDevice(args[0], noWait)
@@ -25,11 +26,12 @@ Use 'lts' to start the last started device.`,
 }
 
 var stopCmd = &cobra.Command{
-	Use:     "stop [device-name-or-udid]",
-	Aliases: []string{"st"},
-	Short:   "Stop a running iOS simulator or Android emulator",
-	Long:    `Stop a specific running iOS simulator or Android emulator by name or UDID.`,
-	Args:    cobra.ExactArgs(1),
+	Use:               "stop [device-name-or-udid]",
+	Aliases:           []string{"st"},
+	Short:             "Stop a running iOS simulator or Android emulator",
+	Long:              `Stop a specific running iOS simulator or Android emulator by name or UDID.`,
+	ValidArgsFunction: validDeviceArgs,
+	Args:              cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		deviceID := args[0]
 
@@ -48,11 +50,12 @@ var stopCmd = &cobra.Command{
 }
 
 var shutdownCmd = &cobra.Command{
-	Use:     "shutdown [device-name-or-udid]",
-	Aliases: []string{"sd"},
-	Short:   "Shutdown an iOS simulator or Android emulator",
-	Long:    `Shutdown a specific iOS simulator or Android emulator by name or UDID.`,
-	Args:    cobra.ExactArgs(1),
+	Use:               "shutdown [device-name-or-udid]",
+	Aliases:           []string{"sd"},
+	Short:             "Shutdown an iOS simulator or Android emulator",
+	Long:              `Shutdown a specific iOS simulator or Android emulator by name or UDID.`,
+	ValidArgsFunction: validDeviceArgs,
+	Args:              cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		deviceID := args[0]
 
@@ -71,11 +74,12 @@ var shutdownCmd = &cobra.Command{
 }
 
 var restartCmd = &cobra.Command{
-	Use:     "restart [device-name-or-udid]",
-	Aliases: []string{"r"},
-	Short:   "Restart an iOS simulator or Android emulator",
-	Long:    `Restart a specific iOS simulator or Android emulator by name or UDID.`,
-	Args:    cobra.ExactArgs(1),
+	Use:               "restart [device-name-or-udid]",
+	Aliases:           []string{"r"},
+	Short:             "Restart an iOS simulator or Android emulator",
+	Long:              `Restart a specific iOS simulator or Android emulator by name or UDID.`,
+	ValidArgsFunction: validDeviceArgs,
+	Args:              cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		deviceID := args[0]
 
@@ -99,7 +103,8 @@ var deleteCmd = &cobra.Command{
 	Short:   "Delete an iOS simulator or Android emulator",
 	Long: `Delete a specific iOS simulator or Android emulator by name or UDID. ` +
 		`This will permanently remove the device.`,
-	Args: cobra.ExactArgs(1),
+	ValidArgsFunction: validDeviceArgs,
+	Args:              cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		deviceID := args[0]
 		force, _ := cmd.Flags().GetBool("force")
@@ -129,6 +134,69 @@ var deleteCmd = &cobra.Command{
 		}
 
 		return fmt.Errorf("device %q: %w", deviceID, ErrDeviceNotFound)
+	},
+}
+
+var eraseCmd = &cobra.Command{
+	Use:     "erase [device-name-or-udid]",
+	Aliases: []string{"reset"},
+	Short:   "Erase a device (factory reset)",
+	Long: `Erase a specific iOS simulator or Android emulator by name or UDID.
+This performs a factory reset. The device will be shut down if it is running.`,
+	ValidArgsFunction: validDeviceArgs,
+	Args:              cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		deviceID := args[0]
+		force, _ := cmd.Flags().GetBool("force")
+
+		if !force {
+			fmt.Printf("Are you sure you want to permanently erase %q? This cannot be undone. [y/N]: ", deviceID)
+			var confirm string
+			_, _ = fmt.Scanln(&confirm)
+			if strings.ToLower(strings.TrimSpace(confirm)) != "y" {
+				fmt.Println("Erase cancelled.")
+				return nil
+			}
+		}
+
+		if runtime.GOOS == DarwinOS {
+			if found, err := eraseIOSSimulator(deviceID); found {
+				return err
+			}
+		}
+
+		if found, err := eraseAndroidEmulator(deviceID); found {
+			return err
+		}
+
+		return fmt.Errorf("device %q: %w", deviceID, ErrDeviceNotFound)
+	},
+}
+
+var cloneCmd = &cobra.Command{
+	Use:               "clone [source-device] <new-name>",
+	Short:             "Clone a device (iOS only)",
+	Long:              `Clone a specific iOS simulator. Not supported for Android emulators.`,
+	ValidArgsFunction: validDeviceAndFileArgs,
+	Args:              cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		sourceDevice := args[0]
+		newName := args[1]
+
+		if runtime.GOOS == DarwinOS {
+			if found, err := cloneIOSSimulator(sourceDevice, newName); found {
+				return err
+			}
+		} else {
+			return ErrIOSMacOnly
+		}
+
+		// Check if it's an Android device
+		if DoesAndroidAVDExist(sourceDevice) {
+			return ErrAndroidCloneNotSupported
+		}
+
+		return fmt.Errorf("device %q: %w", sourceDevice, ErrDeviceNotFound)
 	},
 }
 
@@ -173,7 +241,7 @@ var ltsCmd = &cobra.Command{
 // --- Shared Start Logic ---
 
 // startDevice handles the 'start' action for both startCmd and ltsCmd.
-// noWait skips the Android boot-wait polling when true.
+// NoWait skips the Android boot-wait polling when true.
 func startDevice(deviceID string, noWait bool) error {
 	if deviceID == "lts" {
 		lastDevice, err := GetLastStartedDevice()
@@ -303,6 +371,44 @@ func deleteIOSSimulator(deviceID string) (bool, error) {
 	return true, nil
 }
 
+// eraseIOSSimulator factory resets an iOS simulator.
+func eraseIOSSimulator(deviceID string) (bool, error) {
+	device := FindIOSSimulatorByID(deviceID)
+	if device == nil {
+		return false, nil
+	}
+
+	fmt.Printf("Erasing iOS simulator '%s'...\n", deviceID)
+
+	_ = packageExecutor.Run(CmdXCrun, CmdSimctl, "shutdown", device.UDID)
+
+	if err := packageExecutor.Run(CmdXCrun, CmdSimctl, "erase", device.UDID); err != nil {
+		return true, fmt.Errorf("failed to erase iOS simulator '%s': %w", deviceID, err)
+	}
+
+	fmt.Printf("iOS simulator '%s' erased successfully\n", deviceID)
+
+	return true, nil
+}
+
+// cloneIOSSimulator clones an iOS simulator.
+func cloneIOSSimulator(sourceDeviceID, newName string) (bool, error) {
+	device := FindIOSSimulatorByID(sourceDeviceID)
+	if device == nil {
+		return false, nil
+	}
+
+	fmt.Printf("Cloning iOS simulator '%s' to '%s'...\n", sourceDeviceID, newName)
+
+	if err := packageExecutor.Run(CmdXCrun, CmdSimctl, "clone", device.UDID, newName); err != nil {
+		return true, fmt.Errorf("failed to clone iOS simulator '%s': %w", sourceDeviceID, err)
+	}
+
+	fmt.Printf("iOS simulator '%s' cloned to '%s' successfully\n", sourceDeviceID, newName)
+
+	return true, nil
+}
+
 // --- Android Emulator Operations ---
 
 // androidBootTimeout is the maximum time to wait for an Android emulator to finish booting.
@@ -312,7 +418,7 @@ const androidBootTimeout = 120 * time.Second
 const androidBootPollInterval = 3 * time.Second
 
 // startAndroidEmulator starts an Android emulator.
-// noWait skips boot polling and returns immediately after launching the process.
+// NoWait skips boot polling and returns immediately after launching the process.
 // Returns (true, nil) on success, (true, err) if found but start failed, (false, nil) if not found.
 func startAndroidEmulator(deviceID string, noWait bool) (bool, error) {
 	if IsAndroidEmulatorRunning(deviceID) {
@@ -411,7 +517,7 @@ func waitForAndroidBoot(avdName string) (string, error) {
 		return udid, nil
 	}
 
-	return "starting", fmt.Errorf("timed out waiting for Android emulator '%s' to boot after %s", avdName, androidBootTimeout)
+	return "starting", fmt.Errorf("timed out waiting for Android emulator '%s' to boot after %s", avdName, androidBootTimeout) //nolint:err113
 }
 
 // stopAndroidEmulator kills a running Android emulator.
@@ -463,6 +569,29 @@ func deleteAndroidEmulator(deviceID string) (bool, error) {
 	return true, nil
 }
 
+// eraseAndroidEmulator factory resets an Android emulator.
+// Returns (true, nil) on success, (true, err) if found but erase failed, (false, nil) if not found.
+func eraseAndroidEmulator(deviceID string) (bool, error) {
+	if !DoesAndroidAVDExist(deviceID) {
+		return false, nil
+	}
+
+	fmt.Printf("Erasing Android emulator '%s'...\n", deviceID)
+
+	_, _ = stopAndroidEmulator(deviceID)
+
+	fmt.Printf("Wiping data for Android emulator '%s' (this will restart the emulator)...\n", deviceID)
+
+	_, err := packageExecutor.Start(CmdEmulator, "-avd", deviceID, "-wipe-data")
+	if err != nil {
+		return true, fmt.Errorf("failed to erase Android emulator '%s': %w", deviceID, err)
+	}
+
+	fmt.Printf("Android emulator '%s' is restarting with data wiped.\n", deviceID)
+
+	return true, nil
+}
+
 // --- Device Lookup Helpers ---
 
 // FindIOSSimulatorByID finds an iOS simulator by name (case-insensitive) or exact UDID.
@@ -507,7 +636,8 @@ func FindRunningAndroidEmulator(avdName string) (string, string) {
 						}
 					}
 
-					if actualName != "" && (avdName == "" || actualName == avdName) {
+					// Match if looking for any, or if name matches, or if serial/UDID matches
+					if actualName != "" && (avdName == "" || actualName == avdName || emulatorID == avdName) {
 						return emulatorID, actualName
 					}
 				}

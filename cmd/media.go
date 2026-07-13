@@ -312,11 +312,12 @@ func handleRecording(c capturer, outputFile string, duration, fps, scale int, co
 // --- Cobra Commands ---
 
 var screenshotCmd = &cobra.Command{
-	Use:     "screenshot [device-name-or-udid] [output-file]",
-	Aliases: []string{"ss", "shot"},
-	Short:   "Take a screenshot of a device",
-	Long:    `Take a screenshot of a running iOS simulator or Android emulator and save it to a file. If no device is specified, it will try to find the active one.`,
-	Args:    cobra.RangeArgs(0, 2),
+	Use:               "screenshot [device-name-or-udid] [output-file]",
+	Aliases:           []string{"ss", "shot"},
+	Short:             "Take a screenshot of a device",
+	Long:              `Take a screenshot of a running iOS simulator or Android emulator and save it to a file. If no device is specified, it will try to find the active one.`,
+	ValidArgsFunction: validDeviceAndFileArgs,
+	Args:              cobra.RangeArgs(0, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		deviceID, outputFile := parseDeviceAndFileArgs(args)
 
@@ -357,7 +358,8 @@ var recordCmd = &cobra.Command{
 	Long: `Start screen recording of a running iOS simulator or Android emulator.
 If no device is specified, it will try to find the active one.
 The recording can be stopped by pressing Ctrl+C or by specifying a duration.`,
-	Args: cobra.RangeArgs(0, 2),
+	ValidArgsFunction: validDeviceAndFileArgs,
+	Args:              cobra.RangeArgs(0, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		deviceID, outputFile := parseDeviceAndFileArgs(args)
 

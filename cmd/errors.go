@@ -23,4 +23,14 @@ var (
 	ErrInvalidDuration = errors.New("invalid recording duration")
 	// ErrNoLastDevice is returned when no last started device configuration is found.
 	ErrNoLastDevice = errors.New("no last started device found; start a device first to use 'lts'")
+	// ErrUnsupportedAppFormat is returned when the app file extension is not supported for the target device.
+	ErrUnsupportedAppFormat = errors.New("unsupported app format for target device")
+	// ErrInstallFailed is returned when an app fails to install.
+	ErrInstallFailed = errors.New("failed to install app")
+	// ErrUninstallFailed is returned when an app fails to uninstall.
+	ErrUninstallFailed = errors.New("failed to uninstall app")
+	// ErrIOSMacOnly is returned when an iOS-only operation is attempted on non-macOS.
+	ErrIOSMacOnly = errors.New("iOS operations are only supported on macOS")
+	// ErrAndroidCloneNotSupported is returned when attempting to clone an Android emulator.
+	ErrAndroidCloneNotSupported = errors.New("cloning not supported for Android emulators")
 )
