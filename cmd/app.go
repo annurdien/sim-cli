@@ -111,22 +111,28 @@ func InstallApp(deviceID, appPath string) error {
 	}
 
 	if isAndroid {
-		fmt.Printf("Installing %s on Android emulator '%s'...\n", filepath.Base(appPath), name)
+		err = RunSpinner(fmt.Sprintf("Installing %s on Android emulator '%s'...", filepath.Base(appPath), name), func() error {
+			if output, errExec := packageExecutor.Output(CmdAdb, "-s", udid, "install", appPath); errExec != nil {
+				return fmt.Errorf("%w on Android emulator: %w\nOutput: %s", ErrInstallFailed, errExec, string(output))
+			}
 
-		if output, err := packageExecutor.Output(CmdAdb, "-s", udid, "install", appPath); err != nil {
-			return fmt.Errorf("%w on Android emulator: %w\nOutput: %s", ErrInstallFailed, err, string(output))
-		}
+			return nil
+		})
 	} else {
-		fmt.Printf("Installing %s on iOS simulator '%s'...\n", filepath.Base(appPath), name)
+		err = RunSpinner(fmt.Sprintf("Installing %s on iOS simulator '%s'...", filepath.Base(appPath), name), func() error {
+			if output, errExec := packageExecutor.Output(CmdXCrun, CmdSimctl, "install", udid, appPath); errExec != nil {
+				return fmt.Errorf("%w on iOS simulator: %w\nOutput: %s", ErrInstallFailed, errExec, string(output))
+			}
 
-		if output, err := packageExecutor.Output(CmdXCrun, CmdSimctl, "install", udid, appPath); err != nil {
-			return fmt.Errorf("%w on iOS simulator: %w\nOutput: %s", ErrInstallFailed, err, string(output))
-		}
+			return nil
+		})
 	}
 
-	fmt.Printf("App successfully installed on '%s'.\n", name)
+	if err == nil {
+		PrintSuccess(fmt.Sprintf("App successfully installed on '%s'.", name))
+	}
 
-	return nil
+	return err
 }
 
 func findDeviceForUninstall(deviceID string) (udid, name string, isAndroid bool, err error) {
@@ -166,20 +172,26 @@ func UninstallApp(deviceID, appID string) error {
 	}
 
 	if isAndroid {
-		fmt.Printf("Uninstalling %s from Android emulator '%s'...\n", appID, name)
+		err = RunSpinner(fmt.Sprintf("Uninstalling %s from Android emulator '%s'...", appID, name), func() error {
+			if output, errExec := packageExecutor.Output(CmdAdb, "-s", udid, "uninstall", appID); errExec != nil {
+				return fmt.Errorf("%w on Android emulator: %w\nOutput: %s", ErrUninstallFailed, errExec, string(output))
+			}
 
-		if output, err := packageExecutor.Output(CmdAdb, "-s", udid, "uninstall", appID); err != nil {
-			return fmt.Errorf("%w on Android emulator: %w\nOutput: %s", ErrUninstallFailed, err, string(output))
-		}
+			return nil
+		})
 	} else {
-		fmt.Printf("Uninstalling %s from iOS simulator '%s'...\n", appID, name)
+		err = RunSpinner(fmt.Sprintf("Uninstalling %s from iOS simulator '%s'...", appID, name), func() error {
+			if output, errExec := packageExecutor.Output(CmdXCrun, CmdSimctl, "uninstall", udid, appID); errExec != nil {
+				return fmt.Errorf("%w on iOS simulator: %w\nOutput: %s", ErrUninstallFailed, errExec, string(output))
+			}
 
-		if output, err := packageExecutor.Output(CmdXCrun, CmdSimctl, "uninstall", udid, appID); err != nil {
-			return fmt.Errorf("%w on iOS simulator: %w\nOutput: %s", ErrUninstallFailed, err, string(output))
-		}
+			return nil
+		})
 	}
 
-	fmt.Printf("App '%s' successfully uninstalled from '%s'.\n", appID, name)
+	if err == nil {
+		PrintSuccess(fmt.Sprintf("App '%s' successfully uninstalled from '%s'.", appID, name))
+	}
 
-	return nil
+	return err
 }

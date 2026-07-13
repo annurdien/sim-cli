@@ -126,13 +126,9 @@ func CreateIOSDevice(name, deviceType, runtimeID string) error {
 		return ErrIOSMacOnly
 	}
 
-	fmt.Printf("Creating iOS Simulator '%s'...\n", name)
-
 	if err := packageExecutor.Run(CmdXCrun, CmdSimctl, "create", name, deviceType, runtimeID); err != nil {
 		return fmt.Errorf("failed to create iOS simulator: %w", err)
 	}
-
-	fmt.Println("Device created successfully.")
 
 	return nil
 }
@@ -173,8 +169,6 @@ func ListAndroidCreateTypes() error {
 }
 
 func CreateAndroidDevice(name, deviceType, runtimeID string) error {
-	fmt.Printf("Creating Android Emulator '%s'...\n", name)
-
 	args := []string{"create", "avd", "-n", name, "-k", runtimeID}
 	if deviceType != "" && deviceType != "default" {
 		args = append(args, "--device", deviceType)
@@ -187,8 +181,6 @@ func CreateAndroidDevice(name, deviceType, runtimeID string) error {
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to create Android emulator: %w", err)
 	}
-
-	fmt.Println("Device created successfully.")
 
 	return nil
 }

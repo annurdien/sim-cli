@@ -239,7 +239,23 @@ var cloneCmd = &cobra.Command{
 		newName := args[1]
 
 		if runtime.GOOS == DarwinOS {
-			if found, err := cloneIOSSimulator(sourceDevice, newName); found {
+			err := RunSpinner(fmt.Sprintf("Cloning device %q to %q...", sourceDevice, newName), func() error {
+				found, cloneErr := cloneIOSSimulator(sourceDevice, newName)
+				if cloneErr != nil {
+					return cloneErr
+				}
+				if found {
+					return nil
+				}
+
+				return ErrDeviceNotFound
+			})
+
+			if err == nil {
+				PrintSuccess(fmt.Sprintf("Successfully cloned %s to %s", sourceDevice, newName))
+				return nil
+			}
+			if !errors.Is(err, ErrDeviceNotFound) {
 				return err
 			}
 		} else {
@@ -331,8 +347,6 @@ func startIOSSimulator(deviceID string) (bool, error) {
 		return false, nil
 	}
 
-	fmt.Printf("Starting iOS simulator '%s'...\n", deviceID)
-
 	if err := packageExecutor.Run(CmdXCrun, CmdSimctl, "boot", device.UDID); err != nil {
 		return true, fmt.Errorf("failed to boot iOS simulator '%s': %w", deviceID, err)
 	}
@@ -346,8 +360,6 @@ func startIOSSimulator(deviceID string) (bool, error) {
 		fmt.Printf("Warning: could not save last started device: %v\n", err)
 	}
 
-	fmt.Printf("iOS simulator '%s' started successfully\n", deviceID)
-
 	return true, nil
 }
 
@@ -359,13 +371,9 @@ func stopIOSSimulator(deviceID string) (bool, error) {
 		return false, nil
 	}
 
-	fmt.Printf("Stopping iOS simulator '%s'...\n", deviceID)
-
 	if err := packageExecutor.Run(CmdXCrun, CmdSimctl, "shutdown", device.UDID); err != nil {
 		return true, fmt.Errorf("failed to stop iOS simulator '%s': %w", deviceID, err)
 	}
-
-	fmt.Printf("iOS simulator '%s' stopped successfully\n", deviceID)
 
 	return true, nil
 }
@@ -383,8 +391,6 @@ func restartIOSSimulator(deviceID string) (bool, error) {
 		return false, nil
 	}
 
-	fmt.Printf("Restarting iOS simulator '%s'...\n", deviceID)
-
 	_ = packageExecutor.Run(CmdXCrun, CmdSimctl, "shutdown", device.UDID) // Ignore error if already shut down.
 
 	if err := packageExecutor.Run(CmdXCrun, CmdSimctl, "boot", device.UDID); err != nil {
@@ -400,8 +406,6 @@ func restartIOSSimulator(deviceID string) (bool, error) {
 		fmt.Printf("Warning: could not save last started device: %v\n", err)
 	}
 
-	fmt.Printf("iOS simulator '%s' restarted successfully\n", deviceID)
-
 	return true, nil
 }
 
@@ -413,15 +417,11 @@ func deleteIOSSimulator(deviceID string) (bool, error) {
 		return false, nil
 	}
 
-	fmt.Printf("Deleting iOS simulator '%s'...\n", deviceID)
-
 	_ = packageExecutor.Run(CmdXCrun, CmdSimctl, "shutdown", device.UDID)
 
 	if err := packageExecutor.Run(CmdXCrun, CmdSimctl, "delete", device.UDID); err != nil {
 		return true, fmt.Errorf("failed to delete iOS simulator '%s': %w", deviceID, err)
 	}
-
-	fmt.Printf("iOS simulator '%s' deleted successfully\n", deviceID)
 
 	return true, nil
 }
@@ -433,15 +433,11 @@ func eraseIOSSimulator(deviceID string) (bool, error) {
 		return false, nil
 	}
 
-	fmt.Printf("Erasing iOS simulator '%s'...\n", deviceID)
-
 	_ = packageExecutor.Run(CmdXCrun, CmdSimctl, "shutdown", device.UDID)
 
 	if err := packageExecutor.Run(CmdXCrun, CmdSimctl, "erase", device.UDID); err != nil {
 		return true, fmt.Errorf("failed to erase iOS simulator '%s': %w", deviceID, err)
 	}
-
-	fmt.Printf("iOS simulator '%s' erased successfully\n", deviceID)
 
 	return true, nil
 }
@@ -453,13 +449,9 @@ func cloneIOSSimulator(sourceDeviceID, newName string) (bool, error) {
 		return false, nil
 	}
 
-	fmt.Printf("Cloning iOS simulator '%s' to '%s'...\n", sourceDeviceID, newName)
-
 	if err := packageExecutor.Run(CmdXCrun, CmdSimctl, "clone", device.UDID, newName); err != nil {
 		return true, fmt.Errorf("failed to clone iOS simulator '%s': %w", sourceDeviceID, err)
 	}
-
-	fmt.Printf("iOS simulator '%s' cloned to '%s' successfully\n", sourceDeviceID, newName)
 
 	return true, nil
 }
@@ -497,8 +489,6 @@ func startAndroidEmulator(deviceID string, noWait bool) (bool, error) {
 		return false, nil
 	}
 
-	fmt.Printf("Starting Android emulator '%s'...\n", deviceID)
-
 	_, err := packageExecutor.Start(CmdEmulator, "-avd", deviceID)
 	if err != nil {
 		return true, fmt.Errorf("failed to start Android emulator '%s': %w", deviceID, err)
@@ -516,14 +506,10 @@ func startAndroidEmulator(deviceID string, noWait bool) (bool, error) {
 			fmt.Printf("Warning: could not save last started device: %v\n", err)
 		}
 
-		fmt.Printf("Android emulator '%s' launched (--no-wait: skipping boot check)\n", deviceID)
-
 		return true, nil
 	}
 
 	// Wait for the emulator to fully boot and resolve its real UDID.
-	fmt.Printf("Waiting for Android emulator '%s' to boot...\n", deviceID)
-
 	udid, bootErr := waitForAndroidBoot(deviceID)
 	if bootErr != nil {
 		// Non-fatal: emulator may still be booting. Save placeholder and warn.
@@ -540,10 +526,6 @@ func startAndroidEmulator(deviceID string, noWait bool) (bool, error) {
 	}
 	if err := SaveLastStartedDevice(device); err != nil {
 		fmt.Printf("Warning: could not save last started device: %v\n", err)
-	}
-
-	if bootErr == nil {
-		fmt.Printf("Android emulator '%s' started successfully (serial: %s)\n", deviceID, udid)
 	}
 
 	return true, nil
@@ -583,13 +565,9 @@ func stopAndroidEmulator(deviceID string) (bool, error) {
 		return false, nil
 	}
 
-	fmt.Printf("Stopping Android emulator '%s'...\n", deviceID)
-
 	if err := packageExecutor.Run(CmdAdb, "-s", udid, "emu", "kill"); err != nil {
 		return true, fmt.Errorf("failed to stop Android emulator '%s': %w", deviceID, err)
 	}
-
-	fmt.Printf("Android emulator '%s' stopped successfully\n", deviceID)
 
 	return true, nil
 }
@@ -597,8 +575,6 @@ func stopAndroidEmulator(deviceID string) (bool, error) {
 // restartAndroidEmulator stops then starts an Android emulator.
 // Returns (true, nil) on success, (true, err) if found but restart failed, (false, nil) if not found.
 func restartAndroidEmulator(deviceID string) (bool, error) {
-	fmt.Printf("Restarting Android emulator '%s'...\n", deviceID)
-
 	_, _ = stopAndroidEmulator(deviceID)
 
 	return startAndroidEmulator(deviceID, false)
@@ -611,15 +587,11 @@ func deleteAndroidEmulator(deviceID string) (bool, error) {
 		return false, nil
 	}
 
-	fmt.Printf("Deleting Android emulator '%s'...\n", deviceID)
-
 	_, _ = stopAndroidEmulator(deviceID)
 
 	if err := packageExecutor.Run(CmdAvdManager, "delete", "avd", "-n", deviceID); err != nil {
 		return true, fmt.Errorf("failed to delete Android emulator '%s': %w", deviceID, err)
 	}
-
-	fmt.Printf("Android emulator '%s' deleted successfully\n", deviceID)
 
 	return true, nil
 }
@@ -631,18 +603,12 @@ func eraseAndroidEmulator(deviceID string) (bool, error) {
 		return false, nil
 	}
 
-	fmt.Printf("Erasing Android emulator '%s'...\n", deviceID)
-
 	_, _ = stopAndroidEmulator(deviceID)
-
-	fmt.Printf("Wiping data for Android emulator '%s' (this will restart the emulator)...\n", deviceID)
 
 	_, err := packageExecutor.Start(CmdEmulator, "-avd", deviceID, "-wipe-data")
 	if err != nil {
 		return true, fmt.Errorf("failed to erase Android emulator '%s': %w", deviceID, err)
 	}
-
-	fmt.Printf("Android emulator '%s' is restarting with data wiped.\n", deviceID)
 
 	return true, nil
 }
