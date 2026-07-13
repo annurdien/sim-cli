@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/charmbracelet/huh/spinner"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
 )
@@ -77,4 +78,36 @@ func RenderTable(headers []string, rows [][]string) {
 		Rows(rows...)
 
 	fmt.Println(t.Render())
+}
+
+// PrintSuccess prints a beautiful success message with a green checkmark.
+func PrintSuccess(msg string) {
+	fmt.Printf("%s %s\n", StyleSuccess.Render("✓"), lipgloss.NewStyle().Bold(true).Render(msg))
+}
+
+// PrintError prints a beautiful error message with a red cross.
+func PrintError(msg string) {
+	fmt.Printf("%s %s\n", StyleError.Render("✗"), lipgloss.NewStyle().Bold(true).Render(msg))
+}
+
+// PrintInfo prints a beautiful info message.
+func PrintInfo(msg string) {
+	fmt.Printf("%s %s\n", StyleIOS.Render("ℹ"), lipgloss.NewStyle().Render(msg))
+}
+
+// RunSpinner runs the provided action function while displaying a beautiful loading spinner.
+func RunSpinner(title string, action func() error) error {
+	var actionErr error
+
+	err := spinner.New().
+		Title(title).
+		Action(func() {
+			actionErr = action()
+		}).
+		Run()
+	if err != nil {
+		return err // Error initializing spinner
+	}
+
+	return actionErr // Error from the action itself
 }

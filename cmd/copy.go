@@ -39,24 +39,34 @@ var copyToCmd = &cobra.Command{
 			return fmt.Errorf("invalid local path: %w", err)
 		}
 
-		fmt.Printf("Copying %s to '%s'...\n", filepath.Base(absPath), name)
-
 		if isAndroid {
-			if err := packageExecutor.Run(CmdAdb, "-s", udid, "push", absPath, "/sdcard/Download/"); err != nil {
-				return fmt.Errorf("failed to copy to Android: %w", err)
+			err = RunSpinner(fmt.Sprintf("Copying %s to '%s'...", filepath.Base(absPath), name), func() error {
+				if pushErr := packageExecutor.Run(CmdAdb, "-s", udid, "push", absPath, "/sdcard/Download/"); pushErr != nil {
+					return fmt.Errorf("failed to copy to Android: %w", pushErr)
+				}
+
+				return nil
+			})
+			if err == nil {
+				PrintSuccess("File copied successfully to /sdcard/Download/")
 			}
-			fmt.Println("File copied successfully to /sdcard/Download/")
 		} else {
 			if runtime.GOOS != DarwinOS {
 				return ErrIOSMacOnly
 			}
-			if err := packageExecutor.Run(CmdXCrun, CmdSimctl, "addmedia", udid, absPath); err != nil {
-				return fmt.Errorf("failed to add media to iOS simulator: %w", err)
+			err = RunSpinner(fmt.Sprintf("Copying %s to '%s'...", filepath.Base(absPath), name), func() error {
+				if addErr := packageExecutor.Run(CmdXCrun, CmdSimctl, "addmedia", udid, absPath); addErr != nil {
+					return fmt.Errorf("failed to add media to iOS simulator: %w", addErr)
+				}
+
+				return nil
+			})
+			if err == nil {
+				PrintSuccess("Media added successfully to Photos.")
 			}
-			fmt.Println("Media added successfully to Photos.")
 		}
 
-		return nil
+		return err
 	},
 }
 
@@ -99,15 +109,19 @@ var copyFromCmd = &cobra.Command{
 			return fmt.Errorf("copy from is not supported for iOS simulators") //nolint:err113
 		}
 
-		fmt.Printf("Copying %s from '%s'...\n", remotePath, name)
+		err = RunSpinner(fmt.Sprintf("Copying %s from '%s'...", remotePath, name), func() error {
+			if pullErr := packageExecutor.Run(CmdAdb, "-s", udid, "pull", remotePath, localPath); pullErr != nil {
+				return fmt.Errorf("failed to pull from Android: %w", pullErr)
+			}
 
-		if err := packageExecutor.Run(CmdAdb, "-s", udid, "pull", remotePath, localPath); err != nil {
-			return fmt.Errorf("failed to pull from Android: %w", err)
+			return nil
+		})
+
+		if err == nil {
+			PrintSuccess("File copied successfully.")
 		}
 
-		fmt.Println("File copied successfully.")
-
-		return nil
+		return err
 	},
 }
 

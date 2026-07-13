@@ -64,7 +64,7 @@ func GeneratePushTemplate() error {
 		return fmt.Errorf("failed to write template: %w", err)
 	}
 
-	fmt.Println("Generated sample push payload at push.json")
+	PrintSuccess("Generated sample push payload at push.json")
 
 	return nil
 }
@@ -92,18 +92,22 @@ func SendPushNotification(deviceID, bundleID, payloadPath string) error {
 		return fmt.Errorf("push notifications are not supported for Android emulators") //nolint:err113
 	}
 
-	fmt.Printf("Sending push notification to %s on '%s'...\n", bundleID, name)
-
 	absPath, err := filepath.Abs(payloadPath)
 	if err != nil {
 		return fmt.Errorf("invalid payload path: %w", err)
 	}
 
-	if err := packageExecutor.Run(CmdXCrun, CmdSimctl, "push", udid, bundleID, absPath); err != nil {
-		return fmt.Errorf("failed to send push notification: %w", err)
+	err = RunSpinner(fmt.Sprintf("Sending push notification to %s on '%s'...", bundleID, name), func() error {
+		if pushErr := packageExecutor.Run(CmdXCrun, CmdSimctl, "push", udid, bundleID, absPath); pushErr != nil {
+			return fmt.Errorf("failed to send push notification: %w", pushErr)
+		}
+
+		return nil
+	})
+
+	if err == nil {
+		PrintSuccess("Push notification sent successfully.")
 	}
 
-	fmt.Println("Push notification sent successfully.")
-
-	return nil
+	return err
 }

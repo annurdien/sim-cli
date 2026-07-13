@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"runtime"
 	"strings"
@@ -32,7 +33,15 @@ Use 'lts' to start the last started device.`,
 			deviceID = args[0]
 		}
 
-		return startDevice(deviceID, noWait)
+		err := RunSpinner(fmt.Sprintf("Booting device %q...", deviceID), func() error {
+			return startDevice(deviceID, noWait)
+		})
+		if err != nil {
+			return err
+		}
+		PrintSuccess(fmt.Sprintf("Successfully booted %s", deviceID))
+
+		return nil
 	},
 }
 
@@ -56,12 +65,42 @@ var stopCmd = &cobra.Command{
 		}
 
 		if runtime.GOOS == DarwinOS {
-			if found, err := stopIOSSimulator(deviceID); found {
+			err := RunSpinner(fmt.Sprintf("Stopping device %q...", deviceID), func() error {
+				found, stopErr := stopIOSSimulator(deviceID)
+				if stopErr != nil {
+					return stopErr
+				}
+				if !found {
+					return ErrDeviceNotFound
+				}
+
+				return nil
+			})
+			if err == nil {
+				PrintSuccess(fmt.Sprintf("Successfully stopped %s", deviceID))
+				return nil
+			}
+			if !errors.Is(err, ErrDeviceNotFound) {
 				return err
 			}
 		}
 
-		if found, err := stopAndroidEmulator(deviceID); found {
+		err := RunSpinner(fmt.Sprintf("Stopping device %q...", deviceID), func() error {
+			found, stopErr := stopAndroidEmulator(deviceID)
+			if stopErr != nil {
+				return stopErr
+			}
+			if !found {
+				return ErrDeviceNotFound
+			}
+
+			return nil
+		})
+		if err == nil {
+			PrintSuccess(fmt.Sprintf("Successfully stopped %s", deviceID))
+			return nil
+		}
+		if !errors.Is(err, ErrDeviceNotFound) {
 			return err
 		}
 
@@ -88,17 +127,7 @@ var shutdownCmd = &cobra.Command{
 			deviceID = args[0]
 		}
 
-		if runtime.GOOS == DarwinOS {
-			if found, err := shutdownIOSSimulator(deviceID); found {
-				return err
-			}
-		}
-
-		if found, err := stopAndroidEmulator(deviceID); found {
-			return err
-		}
-
-		return fmt.Errorf("device %q: %w", deviceID, ErrDeviceNotFound)
+		return executeDeviceAction("Shutting down", "shut down", deviceID, shutdownIOSSimulator, stopAndroidEmulator)
 	},
 }
 
@@ -121,17 +150,7 @@ var restartCmd = &cobra.Command{
 			deviceID = args[0]
 		}
 
-		if runtime.GOOS == DarwinOS {
-			if found, err := restartIOSSimulator(deviceID); found {
-				return err
-			}
-		}
-
-		if found, err := restartAndroidEmulator(deviceID); found {
-			return err
-		}
-
-		return fmt.Errorf("device %q: %w", deviceID, ErrDeviceNotFound)
+		return executeDeviceAction("Restarting", "restarted", deviceID, restartIOSSimulator, restartAndroidEmulator)
 	},
 }
 
@@ -170,17 +189,7 @@ var deleteCmd = &cobra.Command{
 			}
 		}
 
-		if runtime.GOOS == DarwinOS {
-			if found, err := deleteIOSSimulator(deviceID); found {
-				return err
-			}
-		}
-
-		if found, err := deleteAndroidEmulator(deviceID); found {
-			return err
-		}
-
-		return fmt.Errorf("device %q: %w", deviceID, ErrDeviceNotFound)
+		return executeDeviceAction("Deleting", "deleted", deviceID, deleteIOSSimulator, deleteAndroidEmulator)
 	},
 }
 
@@ -215,17 +224,7 @@ This performs a factory reset. The device will be shut down if it is running.`,
 			}
 		}
 
-		if runtime.GOOS == DarwinOS {
-			if found, err := eraseIOSSimulator(deviceID); found {
-				return err
-			}
-		}
-
-		if found, err := eraseAndroidEmulator(deviceID); found {
-			return err
-		}
-
-		return fmt.Errorf("device %q: %w", deviceID, ErrDeviceNotFound)
+		return executeDeviceAction("Erasing", "erased", deviceID, eraseIOSSimulator, eraseAndroidEmulator)
 	},
 }
 
@@ -779,4 +778,43 @@ func getRunningAndroidEmulator() (*androidEmulator, error) {
 	}
 
 	return nil, ErrNoRunningAndroidEmulator
+}
+
+// executeDeviceAction executes an iOS or Android device action with a spinner.
+func executeDeviceAction(actionIng, actionEd, deviceID string, iosFunc, androidFunc func(string) (bool, error)) error {
+	err := RunSpinner(fmt.Sprintf("%s device %q...", actionIng, deviceID), func() error {
+		if runtime.GOOS == DarwinOS && iosFunc != nil {
+			found, err := iosFunc(deviceID)
+			if err != nil {
+				return err
+			}
+			if found {
+				return nil
+			}
+		}
+
+		if androidFunc != nil {
+			found, err := androidFunc(deviceID)
+			if err != nil {
+				return err
+			}
+			if found {
+				return nil
+			}
+		}
+
+		return ErrDeviceNotFound
+	})
+
+	if err == nil {
+		PrintSuccess(fmt.Sprintf("Successfully %s %s", actionEd, deviceID))
+
+		return nil
+	}
+
+	if !errors.Is(err, ErrDeviceNotFound) {
+		return err
+	}
+
+	return fmt.Errorf("device %q: %w", deviceID, ErrDeviceNotFound)
 }

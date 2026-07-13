@@ -39,13 +39,18 @@ If arguments are not provided, an interactive prompt will allow you to select th
 			phoneID = selectedPhone
 		}
 
-		fmt.Printf("Pairing Watch (%s) with Phone (%s)...\n", watchID, phoneID)
+		err := RunSpinner(fmt.Sprintf("Pairing Watch (%s) with Phone (%s)...", watchID, phoneID), func() error {
+			if pairErr := packageExecutor.Run(CmdXCrun, CmdSimctl, "pair", watchID, phoneID); pairErr != nil {
+				return fmt.Errorf("failed to pair devices: %w", pairErr)
+			}
 
-		if err := packageExecutor.Run(CmdXCrun, CmdSimctl, "pair", watchID, phoneID); err != nil {
-			return fmt.Errorf("failed to pair devices: %w", err)
+			return nil
+		})
+		if err != nil {
+			return err
 		}
 
-		fmt.Println("Devices paired successfully.")
+		PrintSuccess("Devices paired successfully.")
 
 		return nil
 	},
