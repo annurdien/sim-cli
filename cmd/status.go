@@ -2,9 +2,7 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"strings"
-	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 )
@@ -26,8 +24,7 @@ var statusCmd = &cobra.Command{
 			return
 		}
 
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 4, ' ', 0)
-		fmt.Fprintln(w, "NAME\tPLATFORM\tOS VERSION\tSTATE\tID")
+		var rows [][]string
 
 		for _, d := range running {
 			version := FormatRuntime(d.Runtime)
@@ -41,15 +38,20 @@ var statusCmd = &cobra.Command{
 				platform = "Android"
 			}
 
+			// Format state and platform with lipgloss
+			state := FormatState(d.State)
+			platformStyled := FormatPlatform(platform)
+
 			// For Android, udid can be emulator-5554. For iOS, it's a long UUID.
 			id := d.UDID
 			if len(id) > 20 {
 				id = id[:8] + "..." + id[len(id)-4:]
 			}
 
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", d.Name, platform, version, d.State, id)
+			rows = append(rows, []string{d.Name, platformStyled, version, state, id})
 		}
 
-		_ = w.Flush()
+		headers := []string{"Name", "Platform", "OS Version", "State", "ID"}
+		RenderTable(headers, rows)
 	},
 }
