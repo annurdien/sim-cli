@@ -18,10 +18,21 @@ var startCmd = &cobra.Command{
 	Long: `Start a specific iOS simulator or Android emulator by name or UDID.
 Use 'lts' to start the last started device.`,
 	ValidArgsFunction: validDeviceArgs,
-	Args:              cobra.ExactArgs(1),
+	Args:              cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		noWait, _ := cmd.Flags().GetBool("no-wait")
-		return startDevice(args[0], noWait)
+		var deviceID string
+		if len(args) == 0 {
+			selected, err := PromptDeviceSelector("all")
+			if err != nil {
+				return err
+			}
+			deviceID = selected
+		} else {
+			deviceID = args[0]
+		}
+
+		return startDevice(deviceID, noWait)
 	},
 }
 
@@ -31,9 +42,18 @@ var stopCmd = &cobra.Command{
 	Short:             "Stop a running iOS simulator or Android emulator",
 	Long:              `Stop a specific running iOS simulator or Android emulator by name or UDID.`,
 	ValidArgsFunction: validDeviceArgs,
-	Args:              cobra.ExactArgs(1),
+	Args:              cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		deviceID := args[0]
+		var deviceID string
+		if len(args) == 0 {
+			selected, err := PromptDeviceSelector("booted")
+			if err != nil {
+				return err
+			}
+			deviceID = selected
+		} else {
+			deviceID = args[0]
+		}
 
 		if runtime.GOOS == DarwinOS {
 			if found, err := stopIOSSimulator(deviceID); found {
@@ -55,9 +75,18 @@ var shutdownCmd = &cobra.Command{
 	Short:             "Shutdown an iOS simulator or Android emulator",
 	Long:              `Shutdown a specific iOS simulator or Android emulator by name or UDID.`,
 	ValidArgsFunction: validDeviceArgs,
-	Args:              cobra.ExactArgs(1),
+	Args:              cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		deviceID := args[0]
+		var deviceID string
+		if len(args) == 0 {
+			selected, err := PromptDeviceSelector("booted")
+			if err != nil {
+				return err
+			}
+			deviceID = selected
+		} else {
+			deviceID = args[0]
+		}
 
 		if runtime.GOOS == DarwinOS {
 			if found, err := shutdownIOSSimulator(deviceID); found {
@@ -79,9 +108,18 @@ var restartCmd = &cobra.Command{
 	Short:             "Restart an iOS simulator or Android emulator",
 	Long:              `Restart a specific iOS simulator or Android emulator by name or UDID.`,
 	ValidArgsFunction: validDeviceArgs,
-	Args:              cobra.ExactArgs(1),
+	Args:              cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		deviceID := args[0]
+		var deviceID string
+		if len(args) == 0 {
+			selected, err := PromptDeviceSelector("booted")
+			if err != nil {
+				return err
+			}
+			deviceID = selected
+		} else {
+			deviceID = args[0]
+		}
 
 		if runtime.GOOS == DarwinOS {
 			if found, err := restartIOSSimulator(deviceID); found {
@@ -104,9 +142,18 @@ var deleteCmd = &cobra.Command{
 	Long: `Delete a specific iOS simulator or Android emulator by name or UDID. ` +
 		`This will permanently remove the device.`,
 	ValidArgsFunction: validDeviceArgs,
-	Args:              cobra.ExactArgs(1),
+	Args:              cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		deviceID := args[0]
+		var deviceID string
+		if len(args) == 0 {
+			selected, err := PromptDeviceSelector("all")
+			if err != nil {
+				return err
+			}
+			deviceID = selected
+		} else {
+			deviceID = args[0]
+		}
 		force, _ := cmd.Flags().GetBool("force")
 
 		if !force {
@@ -144,9 +191,18 @@ var eraseCmd = &cobra.Command{
 	Long: `Erase a specific iOS simulator or Android emulator by name or UDID.
 This performs a factory reset. The device will be shut down if it is running.`,
 	ValidArgsFunction: validDeviceArgs,
-	Args:              cobra.ExactArgs(1),
+	Args:              cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		deviceID := args[0]
+		var deviceID string
+		if len(args) == 0 {
+			selected, err := PromptDeviceSelector("all")
+			if err != nil {
+				return err
+			}
+			deviceID = selected
+		} else {
+			deviceID = args[0]
+		}
 		force, _ := cmd.Flags().GetBool("force")
 
 		if !force {

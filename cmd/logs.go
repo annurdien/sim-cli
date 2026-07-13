@@ -26,8 +26,14 @@ If no device is specified, the first booted device is used automatically.`,
 	ValidArgsFunction: validDeviceArgs,
 	Args:              cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		deviceID := ""
-		if len(args) > 0 {
+		var deviceID string
+		if len(args) == 0 {
+			selected, err := PromptDeviceSelector("booted")
+			if err != nil {
+				return err
+			}
+			deviceID = selected
+		} else {
 			deviceID = args[0]
 		}
 
