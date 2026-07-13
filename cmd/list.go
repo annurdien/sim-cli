@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"runtime"
 	"sort"
 	"strings"
@@ -92,8 +91,7 @@ func FormatRuntime(runtimeVal string) string {
 
 // GetIOSSimulators returns all iOS simulators reported by xcrun simctl.
 func GetIOSSimulators() []Device {
-	cmd := exec.Command(CmdXCrun, CmdSimctl, "list", "devices", "--json")
-	output, err := cmd.Output()
+	output, err := packageExecutor.Output(CmdXCrun, CmdSimctl, "list", "devices", "--json")
 	if err != nil {
 		return []Device{}
 	}
@@ -138,8 +136,7 @@ func GetAndroidEmulators() []Device {
 
 // GetAvailableAVDs returns a set of all AVD names defined on this machine.
 func GetAvailableAVDs() map[string]bool {
-	avdCmd := exec.Command(CmdEmulator, "-list-avds")
-	avdOutput, err := avdCmd.Output()
+	avdOutput, err := packageExecutor.Output(CmdEmulator, "-list-avds")
 	if err != nil {
 		// Emulator may not be in PATH; only running devices will be listed.
 		fmt.Fprintf(os.Stderr, "Warning: could not run 'emulator -list-avds': %v. Only running emulators will be listed.\n", err)
@@ -162,8 +159,7 @@ func GetAvailableAVDs() map[string]bool {
 
 // GetRunningAndroidDevices returns a map of running emulator name → UDID from adb devices.
 func GetRunningAndroidDevices() map[string]string {
-	adbCmd := exec.Command(CmdAdb, "devices")
-	adbOutput, err := adbCmd.Output()
+	adbOutput, err := packageExecutor.Output(CmdAdb, "devices")
 	if err != nil {
 		return make(map[string]string)
 	}
@@ -203,8 +199,7 @@ func parseEmulatorLine(line string) (string, string) {
 
 // GetEmulatorName retrieves the AVD name of a running emulator by its serial (e.g. "emulator-5554").
 func GetEmulatorName(udid string) string {
-	nameCmd := exec.Command(CmdAdb, "-s", udid, "emu", "avd", "name")
-	nameOutput, err := nameCmd.Output()
+	nameOutput, err := packageExecutor.Output(CmdAdb, "-s", udid, "emu", "avd", "name")
 	if err != nil {
 		return ""
 	}

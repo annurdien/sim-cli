@@ -9,6 +9,15 @@ type CommandExecutor interface {
 	Start(name string, args ...string) (*exec.Cmd, error)
 }
 
+// packageExecutor is the package-level executor used by all commands.
+// Replace via SetExecutor in tests to inject mocks.
+var packageExecutor CommandExecutor = &OSCommandExecutor{}
+
+// SetExecutor replaces the package-level executor. Use in tests to inject a mock.
+func SetExecutor(e CommandExecutor) {
+	packageExecutor = e
+}
+
 // OSCommandExecutor is the default executor that delegates to os/exec.
 type OSCommandExecutor struct{}
 

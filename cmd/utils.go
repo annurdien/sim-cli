@@ -34,31 +34,68 @@ func copyToClipboard(text string) error {
 }
 
 // copyFileToClipboard copies the contents of the file at filePath to the system clipboard.
-// On macOS, image files are copied as image data; all other files are copied by path.
+// On macOS, image files are copied as image data; on Linux, xclip is used when available.
+// On other platforms (Windows), the file path is copied as text with a warning.
 func copyFileToClipboard(filePath string) error {
-	var cmd *exec.Cmd
-
 	ext := strings.ToLower(filepath.Ext(filePath))
 
 	switch runtime.GOOS {
 	case DarwinOS:
-		var script string
-		// Escape double quotes to prevent AppleScript injection.
-		safePath := strings.ReplaceAll(filePath, `"`, `\"`)
-
-		if ext == ExtPNG {
-			script = fmt.Sprintf(`set the clipboard to (read (POSIX file "%s") as TIFF picture)`, safePath)
-		} else {
-			script = fmt.Sprintf(`set the clipboard to POSIX file "%s"`, safePath)
-		}
-
-		cmd = exec.Command(CmdOsaScript, "-e", script)
+		return copyFileToClipboardDarwin(filePath, ext)
+	case "linux":
+		return copyFileToClipboardLinux(filePath, ext)
 	default:
+		// Windows and other platforms: fall back to copying the file path as text.
+		fmt.Printf("Warning: clipboard file copy not supported on %s; copying file path instead.\n", runtime.GOOS)
+		return copyToClipboard(filePath)
+	}
+}
+
+// copyFileToClipboardDarwin copies a file to the macOS clipboard via AppleScript.
+func copyFileToClipboardDarwin(filePath, ext string) error {
+	// Escape double quotes to prevent AppleScript injection.
+	safePath := strings.ReplaceAll(filePath, `"`, `\"`)
+
+	var script string
+	if ext == ExtPNG {
+		script = fmt.Sprintf(`set the clipboard to (read (POSIX file "%s") as TIFF picture)`, safePath)
+	} else {
+		script = fmt.Sprintf(`set the clipboard to POSIX file "%s"`, safePath)
+	}
+
+	cmd := exec.Command(CmdOsaScript, "-e", script)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to copy file to clipboard: %w", err)
+	}
+
+	return nil
+}
+
+// copyFileToClipboardLinux copies a file to the Linux clipboard via xclip.
+// Falls back to copying the file path as text if xclip is not installed.
+func copyFileToClipboardLinux(filePath, ext string) error {
+	if !CommandExists(CmdXclip) {
+		fmt.Printf("Warning: xclip not found; copying file path to clipboard instead. Install xclip for full clipboard support.\n")
 		return copyToClipboard(filePath)
 	}
 
+	var mimeType string
+	switch ext {
+	case ExtPNG:
+		mimeType = "image/png"
+	case ".jpg", ".jpeg":
+		mimeType = "image/jpeg"
+	case ExtGIF:
+		mimeType = "image/gif"
+	default:
+		// For MP4 and other non-image files, copy the path as text.
+		fmt.Printf("Note: copying file path to clipboard (binary clipboard not supported for %s files on Linux).\n", ext)
+		return copyToClipboard(filePath)
+	}
+
+	cmd := exec.Command(CmdXclip, "-selection", "clipboard", "-t", mimeType, "-i", filePath)
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to copy file to clipboard: %w", err)
+		return fmt.Errorf("failed to copy file to clipboard via xclip: %w", err)
 	}
 
 	return nil
@@ -93,9 +130,8 @@ func convertToGIF(inputFile, outputFile string, fps, scale int) error {
 
 	fmt.Println("Converting to GIF...")
 	vf := fmt.Sprintf("fps=%d,scale=%d:-1:flags=lanczos", fps, scale)
-	cmd := exec.Command(CmdFFmpeg, "-i", inputFile, "-vf", vf, "-c", "gif", "-f", "gif", outputFile)
 
-	if output, err := cmd.CombinedOutput(); err != nil {
+	if output, err := packageExecutor.Output(CmdFFmpeg, "-i", inputFile, "-vf", vf, "-c", "gif", "-f", "gif", outputFile); err != nil {
 		return fmt.Errorf("failed to convert to GIF: %w\nOutput: %s", err, string(output))
 	}
 
