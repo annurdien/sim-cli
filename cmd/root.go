@@ -58,8 +58,13 @@ func init() {
 	rootCmd.AddCommand(startCmd)
 	rootCmd.AddCommand(stopCmd)
 	rootCmd.AddCommand(shutdownCmd)
+	rootCmd.AddCommand(completionCmd)
+	rootCmd.AddCommand(installCmd)
+	rootCmd.AddCommand(uninstallCmd)
 	rootCmd.AddCommand(restartCmd)
 	rootCmd.AddCommand(deleteCmd)
+	rootCmd.AddCommand(eraseCmd)
+	rootCmd.AddCommand(cloneCmd)
 	rootCmd.AddCommand(lastCmd)
 	rootCmd.AddCommand(ltsCmd)
 	rootCmd.AddCommand(screenshotCmd)
@@ -69,6 +74,9 @@ func init() {
 
 	// deleteCmd flags
 	deleteCmd.Flags().BoolP("force", "f", false, "Skip confirmation prompt")
+
+	// eraseCmd flags
+	eraseCmd.Flags().BoolP("force", "f", false, "Skip confirmation prompt")
 
 	// startCmd flags
 	startCmd.Flags().Bool("no-wait", false, "Skip waiting for Android emulator to fully boot (fire-and-forget)")

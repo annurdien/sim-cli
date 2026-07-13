@@ -19,7 +19,8 @@ Examples:
   sim open "myapp://home"
   sim open "iPhone 15 Pro" "myapp://home"
   sim open "Pixel_7_API_34" "https://example.com"`,
-	Args: cobra.RangeArgs(1, 2),
+	ValidArgsFunction: validDeviceAndFileArgs,
+	Args:              cobra.RangeArgs(1, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var deviceID, url string
 

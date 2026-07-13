@@ -22,6 +22,7 @@ func (r *recordingExecutor) Output(name string, args ...string) ([]byte, error) 
 	if r.onOutput != nil {
 		return r.onOutput(name, args)
 	}
+
 	return []byte{}, nil
 }
 
@@ -29,6 +30,7 @@ func (r *recordingExecutor) Run(name string, args ...string) error {
 	if r.onRun != nil {
 		return r.onRun(name, args)
 	}
+
 	return nil
 }
 
@@ -36,6 +38,7 @@ func (r *recordingExecutor) Start(name string, args ...string) (*exec.Cmd, error
 	if r.onStart != nil {
 		return r.onStart(name, args)
 	}
+
 	return exec.Command("true"), nil
 }
 
@@ -140,9 +143,9 @@ func TestOpenURL_Android_CommandShape(t *testing.T) {
 	_ = NewTestHelpers(t)
 
 	const (
-		testURL       = "https://example.com"
+		testURL        = "https://example.com"
 		emulatorSerial = "emulator-5554"
-		avdName       = "Pixel_7_API_34"
+		avdName        = "Pixel_7_API_34"
 	)
 
 	adbDevicesOutput := "List of devices attached\n" + emulatorSerial + "\tdevice\n"
@@ -166,6 +169,7 @@ func TestOpenURL_Android_CommandShape(t *testing.T) {
 					return []byte{}, nil
 				}
 			}
+
 			return []byte{}, nil
 		},
 	}
@@ -179,16 +183,20 @@ func TestOpenURL_Android_CommandShape(t *testing.T) {
 
 	// Check if any recorded call matches the am start pattern.
 	for _, call := range recorded {
-		if len(call) > 0 && call[0] == "adb" {
-			joined := strings.Join(call[1:], " ")
-			if strings.Contains(joined, "am start") {
-				if !strings.Contains(joined, "android.intent.action.VIEW") {
-					t.Errorf("am start missing VIEW action: %s", joined)
-				}
-				if !strings.Contains(joined, testURL) {
-					t.Errorf("am start missing URL %q: %s", testURL, joined)
-				}
-			}
+		if len(call) == 0 || call[0] != "adb" {
+			continue
+		}
+
+		joined := strings.Join(call[1:], " ")
+		if !strings.Contains(joined, "am start") {
+			continue
+		}
+
+		if !strings.Contains(joined, "android.intent.action.VIEW") {
+			t.Errorf("am start missing VIEW action: %s", joined)
+		}
+		if !strings.Contains(joined, testURL) {
+			t.Errorf("am start missing URL %q: %s", testURL, joined)
 		}
 	}
 }
@@ -235,6 +243,7 @@ func TestOpenURL_FindRunningAndroid_ParsesCorrectly(t *testing.T) {
 			if strings.Contains(joined, "avd name") {
 				return []byte(adbNameOut), nil
 			}
+
 			return []byte{}, nil
 		},
 	}
@@ -271,6 +280,7 @@ func TestOpenURL_FindRunningAndroid_FiltersByName(t *testing.T) {
 			if strings.Contains(joined, "avd name") {
 				return []byte(adbNameOut), nil
 			}
+
 			return []byte{}, nil
 		},
 	}
