@@ -4,21 +4,12 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
 )
 
 // Version is the current release version of SIM-CLI.
 var Version = "dev"
-
-const asciiArt = `
- ███████╗██╗███╗   ███╗      ██████╗██╗     ██╗
- ██╔════╝██║████╗ ████║     ██╔════╝██║     ██║
- ███████╗██║██╔████╔██║     ██║     ██║     ██║
- ╚════██║██║██║╚██╔╝██║     ██║     ██║     ██║
- ███████║██║██║ ╚═╝ ██║     ╚██████╗███████╗██║
- ╚══════╝╚═╝╚═╝     ╚═╝      ╚═════╝╚══════╝╚═╝
-                                                    
-`
 
 var rootCmd = &cobra.Command{
 	Use:           "sim",
@@ -44,10 +35,23 @@ It provides a simple interface to:
 			return
 		}
 
-		fmt.Print(asciiArt)
-		fmt.Print("iOS Simulator & Android Emulator Manager\n")
-		fmt.Printf("Version: %s\n\n", cmd.Version)
-		fmt.Println("Use 'sim help' to see available commands")
+		content := lipgloss.JoinVertical(lipgloss.Center,
+			lipgloss.NewStyle().Foreground(lipgloss.Color("99")).Bold(true).Render("📱 SIM-CLI"),
+			lipgloss.NewStyle().Foreground(lipgloss.Color("212")).Render("iOS Simulator & Android Emulator Manager"),
+			lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render(fmt.Sprintf("Version: %s", cmd.Version)),
+			"",
+			lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Italic(true).Render("Use 'sim help' to see available commands"),
+		)
+
+		box := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("99")).
+			Padding(1, 4).
+			Margin(1, 0).
+			Align(lipgloss.Center).
+			Render(content)
+
+		fmt.Println(box)
 	},
 }
 
