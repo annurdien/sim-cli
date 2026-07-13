@@ -60,7 +60,7 @@ func FormatPlatform(platform string) string {
 // RenderTable builds and renders a beautiful lipgloss table.
 func RenderTable(headers []string, rows [][]string) {
 	re := lipgloss.NewRenderer(os.Stdout)
-	headerStyle := re.NewStyle().Foreground(ColorHeader).Bold(true)
+	headerStyle := re.NewStyle().Foreground(ColorHeader).Bold(true).Padding(0, 1)
 	borderStyle := re.NewStyle().Foreground(lipgloss.Color("238"))
 
 	t := table.New().
@@ -68,7 +68,7 @@ func RenderTable(headers []string, rows [][]string) {
 		BorderStyle(borderStyle).
 		Headers(headers...).
 		StyleFunc(func(row, col int) lipgloss.Style {
-			if row == 0 {
+			if row == table.HeaderRow {
 				return headerStyle
 			}
 
