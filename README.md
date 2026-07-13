@@ -154,12 +154,17 @@ sim last
 | `create` | - | Create a new iOS simulator or Android emulator. |
 | `status` | - | Show a compact dashboard of only running devices. |
 | `copy to/from` | - | Transfer files to or from a device. |
+| `pair [watch] [phone]` | - | Pair an Apple Watch simulator with an iPhone simulator. |
 | `config` | - | Manage sim-cli configuration values. |
 | `last` | - | Show the last used device. |
 | `lts` | - | Start the last used device (short for `sim start lts`). |
 | `completion <shell>` | - | Generate shell autocompletion script. |
 | `version` | `-v` | Show the current version. |
 | `help` | - | Show help information. |
+
+## Interactive Mode (TUI)
+
+If you run any command that expects a device argument (like `start`, `stop`, `shutdown`, `restart`, `delete`, `erase`, `logs`, or `pair`) without passing a device name or UDID, `sim-cli` will launch a beautiful interactive Text User Interface (TUI) menu to let you select the target device.
 
 ### screenshot Options
 

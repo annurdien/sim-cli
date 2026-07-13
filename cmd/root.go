@@ -75,6 +75,7 @@ func init() {
 	rootCmd.AddCommand(createCmd)
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(copyCmd)
+	rootCmd.AddCommand(pairCmd)
 	rootCmd.AddCommand(openCmd)
 	rootCmd.AddCommand(doctorCmd)
 
