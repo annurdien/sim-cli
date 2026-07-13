@@ -44,10 +44,24 @@ var createCmd = &cobra.Command{
 		}
 
 		if createIOS {
-			return CreateIOSDevice(createName, createType, createRuntime)
+			err := RunSpinner(fmt.Sprintf("Creating iOS Simulator %q...", createName), func() error {
+				return CreateIOSDevice(createName, createType, createRuntime)
+			})
+			if err == nil {
+				PrintSuccess(fmt.Sprintf("Successfully created iOS Simulator %q", createName))
+			}
+
+			return err
 		}
 
-		return CreateAndroidDevice(createName, createType, createRuntime)
+		err := RunSpinner(fmt.Sprintf("Creating Android Emulator %q...", createName), func() error {
+			return CreateAndroidDevice(createName, createType, createRuntime)
+		})
+		if err == nil {
+			PrintSuccess(fmt.Sprintf("Successfully created Android Emulator %q", createName))
+		}
+
+		return err
 	},
 }
 

@@ -78,7 +78,7 @@ var configSetCmd = &cobra.Command{
 			return err
 		}
 
-		fmt.Printf("Set %s = %s\n", key, value)
+		PrintSuccess(fmt.Sprintf("Set %s = %s", key, value))
 
 		return nil
 	},
@@ -92,7 +92,7 @@ var configResetCmd = &cobra.Command{
 		var confirm string
 		_, _ = fmt.Scanln(&confirm)
 		if strings.ToLower(strings.TrimSpace(confirm)) != "y" {
-			fmt.Println("Reset cancelled.")
+			PrintInfo("Reset cancelled.")
 			return nil
 		}
 
@@ -100,7 +100,7 @@ var configResetCmd = &cobra.Command{
 			return err
 		}
 
-		fmt.Println("Configuration reset to defaults.")
+		PrintSuccess("Configuration reset to defaults.")
 
 		return nil
 	},
