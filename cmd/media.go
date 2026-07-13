@@ -201,21 +201,19 @@ func getCapturer(deviceID string) (capturer, error) {
 }
 
 func getActiveDevice() (capturer, error) {
-	if runtime.GOOS == DarwinOS {
-		if sim, err := getRunningIOSSimulator(); err == nil {
-			PrintInfo(fmt.Sprintf("Active device found: iOS Simulator '%s'", sim.name))
-
-			return sim, nil
-		}
+	u, n, isAndroid, err := FindRunningDevice("")
+	if err != nil {
+		return nil, err
 	}
 
-	if emu, err := getRunningAndroidEmulator(); err == nil {
-		PrintInfo(fmt.Sprintf("Active device found: Android Emulator '%s'", emu.name))
-
-		return emu, nil
+	if isAndroid {
+		PrintInfo(fmt.Sprintf("Active device found: Android Emulator '%s'", n))
+		return &androidEmulator{udid: u, name: n}, nil
 	}
 
-	return nil, ErrNoActiveDevice
+	PrintInfo(fmt.Sprintf("Active device found: iOS Simulator '%s'", n))
+
+	return &iOSSimulator{udid: u, name: n}, nil
 }
 
 // parseDeviceAndFileArgs resolves the optional [device] [file] positional arguments.

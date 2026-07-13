@@ -3,9 +3,7 @@ package cmd
 import (
 	"errors"
 	"fmt"
-	"runtime"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -64,47 +62,9 @@ var stopCmd = &cobra.Command{
 			deviceID = args[0]
 		}
 
-		if runtime.GOOS == DarwinOS {
-			err := RunSpinner(fmt.Sprintf("Stopping device %q...", deviceID), func() error {
-				found, stopErr := stopIOSSimulator(deviceID)
-				if stopErr != nil {
-					return stopErr
-				}
-				if !found {
-					return ErrDeviceNotFound
-				}
-
-				return nil
-			})
-			if err == nil {
-				PrintSuccess(fmt.Sprintf("Successfully stopped %s", deviceID))
-				return nil
-			}
-			if !errors.Is(err, ErrDeviceNotFound) {
-				return err
-			}
-		}
-
-		err := RunSpinner(fmt.Sprintf("Stopping device %q...", deviceID), func() error {
-			found, stopErr := stopAndroidEmulator(deviceID)
-			if stopErr != nil {
-				return stopErr
-			}
-			if !found {
-				return ErrDeviceNotFound
-			}
-
-			return nil
+		return executeDeviceAction("Stopping", "stopped", deviceID, func(m DeviceManager, id string) (bool, error) {
+			return m.Stop(id)
 		})
-		if err == nil {
-			PrintSuccess(fmt.Sprintf("Successfully stopped %s", deviceID))
-			return nil
-		}
-		if !errors.Is(err, ErrDeviceNotFound) {
-			return err
-		}
-
-		return fmt.Errorf("device %q: %w", deviceID, ErrDeviceNotFound)
 	},
 }
 
@@ -127,7 +87,9 @@ var shutdownCmd = &cobra.Command{
 			deviceID = args[0]
 		}
 
-		return executeDeviceAction("Shutting down", "shut down", deviceID, shutdownIOSSimulator, stopAndroidEmulator)
+		return executeDeviceAction("Shutting down", "shut down", deviceID, func(m DeviceManager, id string) (bool, error) {
+			return m.Stop(id)
+		})
 	},
 }
 
@@ -150,7 +112,9 @@ var restartCmd = &cobra.Command{
 			deviceID = args[0]
 		}
 
-		return executeDeviceAction("Restarting", "restarted", deviceID, restartIOSSimulator, restartAndroidEmulator)
+		return executeDeviceAction("Restarting", "restarted", deviceID, func(m DeviceManager, id string) (bool, error) {
+			return m.Restart(id)
+		})
 	},
 }
 
@@ -189,7 +153,9 @@ var deleteCmd = &cobra.Command{
 			}
 		}
 
-		return executeDeviceAction("Deleting", "deleted", deviceID, deleteIOSSimulator, deleteAndroidEmulator)
+		return executeDeviceAction("Deleting", "deleted", deviceID, func(m DeviceManager, id string) (bool, error) {
+			return m.Delete(id)
+		})
 	},
 }
 
@@ -224,7 +190,9 @@ This performs a factory reset. The device will be shut down if it is running.`,
 			}
 		}
 
-		return executeDeviceAction("Erasing", "erased", deviceID, eraseIOSSimulator, eraseAndroidEmulator)
+		return executeDeviceAction("Erasing", "erased", deviceID, func(m DeviceManager, id string) (bool, error) {
+			return m.Erase(id)
+		})
 	},
 }
 
@@ -238,36 +206,9 @@ var cloneCmd = &cobra.Command{
 		sourceDevice := args[0]
 		newName := args[1]
 
-		if runtime.GOOS == DarwinOS {
-			err := RunSpinner(fmt.Sprintf("Cloning device %q to %q...", sourceDevice, newName), func() error {
-				found, cloneErr := cloneIOSSimulator(sourceDevice, newName)
-				if cloneErr != nil {
-					return cloneErr
-				}
-				if found {
-					return nil
-				}
-
-				return ErrDeviceNotFound
-			})
-
-			if err == nil {
-				PrintSuccess(fmt.Sprintf("Successfully cloned %s to %s", sourceDevice, newName))
-				return nil
-			}
-			if !errors.Is(err, ErrDeviceNotFound) {
-				return err
-			}
-		} else {
-			return ErrIOSMacOnly
-		}
-
-		// Check if it's an Android device
-		if DoesAndroidAVDExist(sourceDevice) {
-			return ErrAndroidCloneNotSupported
-		}
-
-		return fmt.Errorf("device %q: %w", sourceDevice, ErrDeviceNotFound)
+		return executeDeviceAction("Cloning", "cloned", sourceDevice, func(m DeviceManager, id string) (bool, error) {
+			return m.Clone(id, newName)
+		})
 	},
 }
 
@@ -322,294 +263,20 @@ func startDevice(deviceID string, noWait bool) error {
 		deviceID = lastDevice.Name
 	}
 
-	if runtime.GOOS == DarwinOS {
-		if found, err := startIOSSimulator(deviceID); found {
+	for _, m := range GetManagers() {
+		found, err := m.Start(deviceID, noWait)
+		if err != nil {
 			return err
 		}
-	}
-
-	if found, err := startAndroidEmulator(deviceID, noWait); found {
-		return err
+		if found {
+			return nil
+		}
 	}
 
 	return fmt.Errorf("device %q: %w", deviceID, ErrDeviceNotFound)
 }
 
-// --- iOS Simulator Operations ---
-
-// startIOSSimulator boots an iOS simulator.
-// Returns (true, nil) on success, (true, err) if found but boot failed, (false, nil) if not found.
-func startIOSSimulator(deviceID string) (bool, error) {
-	device := FindIOSSimulatorByID(deviceID)
-	if device == nil {
-		return false, nil
-	}
-
-	if err := packageExecutor.Run(CmdXCrun, CmdSimctl, "boot", device.UDID); err != nil {
-		return true, fmt.Errorf("failed to boot iOS simulator '%s': %w", deviceID, err)
-	}
-
-	if err := packageExecutor.Run("open", "-a", "Simulator"); err != nil {
-		PrintInfo(fmt.Sprintf("Warning: could not open Simulator app: %v", err))
-	}
-
-	device.State = StateBooted
-	if err := SaveLastStartedDevice(device); err != nil {
-		PrintInfo(fmt.Sprintf("Warning: could not save last started device: %v", err))
-	}
-
-	return true, nil
-}
-
-// stopIOSSimulator shuts down an iOS simulator.
-// Returns (true, nil) on success, (true, err) if found but shutdown failed, (false, nil) if not found.
-func stopIOSSimulator(deviceID string) (bool, error) {
-	device := FindIOSSimulatorByID(deviceID)
-	if device == nil {
-		return false, nil
-	}
-
-	if err := packageExecutor.Run(CmdXCrun, CmdSimctl, "shutdown", device.UDID); err != nil {
-		return true, fmt.Errorf("failed to stop iOS simulator '%s': %w", deviceID, err)
-	}
-
-	return true, nil
-}
-
-// shutdownIOSSimulator is an alias for stopIOSSimulator.
-func shutdownIOSSimulator(deviceID string) (bool, error) {
-	return stopIOSSimulator(deviceID)
-}
-
-// restartIOSSimulator shuts down then boots an iOS simulator.
-// Returns (true, nil) on success, (true, err) if found but restart failed, (false, nil) if not found.
-func restartIOSSimulator(deviceID string) (bool, error) {
-	device := FindIOSSimulatorByID(deviceID)
-	if device == nil {
-		return false, nil
-	}
-
-	_ = packageExecutor.Run(CmdXCrun, CmdSimctl, "shutdown", device.UDID) // Ignore error if already shut down.
-
-	if err := packageExecutor.Run(CmdXCrun, CmdSimctl, "boot", device.UDID); err != nil {
-		return true, fmt.Errorf("failed to boot iOS simulator '%s' during restart: %w", deviceID, err)
-	}
-
-	if err := packageExecutor.Run("open", "-a", "Simulator"); err != nil {
-		PrintInfo(fmt.Sprintf("Warning: could not open Simulator app: %v", err))
-	}
-
-	device.State = StateBooted
-	if err := SaveLastStartedDevice(device); err != nil {
-		PrintInfo(fmt.Sprintf("Warning: could not save last started device: %v", err))
-	}
-
-	return true, nil
-}
-
-// deleteIOSSimulator removes an iOS simulator permanently.
-// Returns (true, nil) on success, (true, err) if found but delete failed, (false, nil) if not found.
-func deleteIOSSimulator(deviceID string) (bool, error) {
-	device := FindIOSSimulatorByID(deviceID)
-	if device == nil {
-		return false, nil
-	}
-
-	_ = packageExecutor.Run(CmdXCrun, CmdSimctl, "shutdown", device.UDID)
-
-	if err := packageExecutor.Run(CmdXCrun, CmdSimctl, "delete", device.UDID); err != nil {
-		return true, fmt.Errorf("failed to delete iOS simulator '%s': %w", deviceID, err)
-	}
-
-	return true, nil
-}
-
-// eraseIOSSimulator factory resets an iOS simulator.
-func eraseIOSSimulator(deviceID string) (bool, error) {
-	device := FindIOSSimulatorByID(deviceID)
-	if device == nil {
-		return false, nil
-	}
-
-	_ = packageExecutor.Run(CmdXCrun, CmdSimctl, "shutdown", device.UDID)
-
-	if err := packageExecutor.Run(CmdXCrun, CmdSimctl, "erase", device.UDID); err != nil {
-		return true, fmt.Errorf("failed to erase iOS simulator '%s': %w", deviceID, err)
-	}
-
-	return true, nil
-}
-
-// cloneIOSSimulator clones an iOS simulator.
-func cloneIOSSimulator(sourceDeviceID, newName string) (bool, error) {
-	device := FindIOSSimulatorByID(sourceDeviceID)
-	if device == nil {
-		return false, nil
-	}
-
-	if err := packageExecutor.Run(CmdXCrun, CmdSimctl, "clone", device.UDID, newName); err != nil {
-		return true, fmt.Errorf("failed to clone iOS simulator '%s': %w", sourceDeviceID, err)
-	}
-
-	return true, nil
-}
-
-// --- Android Emulator Operations ---
-
-// androidBootTimeout is the maximum time to wait for an Android emulator to finish booting.
-const androidBootTimeout = 120 * time.Second
-
-// androidBootPollInterval is how often to poll boot status.
-const androidBootPollInterval = 3 * time.Second
-
-// startAndroidEmulator starts an Android emulator.
-// NoWait skips boot polling and returns immediately after launching the process.
-// Returns (true, nil) on success, (true, err) if found but start failed, (false, nil) if not found.
-func startAndroidEmulator(deviceID string, noWait bool) (bool, error) {
-	if IsAndroidEmulatorRunning(deviceID) {
-		PrintInfo(fmt.Sprintf("Android emulator '%s' is already running", deviceID))
-
-		udid, name := FindRunningAndroidEmulator(deviceID)
-		device := &Device{
-			Name:  name,
-			UDID:  udid,
-			Type:  TypeAndroidEmulator,
-			State: StateBooted,
-		}
-		if err := SaveLastStartedDevice(device); err != nil {
-			PrintInfo(fmt.Sprintf("Warning: could not save last started device: %v", err))
-		}
-
-		return true, nil
-	}
-
-	if !DoesAndroidAVDExist(deviceID) {
-		return false, nil
-	}
-
-	_, err := packageExecutor.Start(CmdEmulator, "-avd", deviceID)
-	if err != nil {
-		return true, fmt.Errorf("failed to start Android emulator '%s': %w", deviceID, err)
-	}
-
-	if noWait {
-		// Fire-and-forget: save a placeholder UDID and return immediately.
-		device := &Device{
-			Name:  deviceID,
-			UDID:  "starting",
-			Type:  TypeAndroidEmulator,
-			State: StateBooted,
-		}
-		if err := SaveLastStartedDevice(device); err != nil {
-			PrintInfo(fmt.Sprintf("Warning: could not save last started device: %v", err))
-		}
-
-		return true, nil
-	}
-
-	// Wait for the emulator to fully boot and resolve its real UDID.
-	udid, bootErr := waitForAndroidBoot(deviceID)
-	if bootErr != nil {
-		PrintInfo( // Non-fatal: emulator may still be booting. Save placeholder and warn.
-			fmt.Sprintf("Warning: emulator may still be booting: %v", bootErr))
-		PrintInfo("Use 'sim last' to check the saved device once it finishes booting.")
-		udid = "starting"
-	}
-
-	device := &Device{
-		Name:  deviceID,
-		UDID:  udid,
-		Type:  TypeAndroidEmulator,
-		State: StateBooted,
-	}
-	if err := SaveLastStartedDevice(device); err != nil {
-		PrintInfo(fmt.Sprintf("Warning: could not save last started device: %v", err))
-	}
-
-	return true, nil
-}
-
-// waitForAndroidBoot polls adb until the emulator with the given AVD name has
-// fully booted (sys.boot_completed == 1). Returns the emulator serial (UDID).
-func waitForAndroidBoot(avdName string) (string, error) {
-	deadline := time.Now().Add(androidBootTimeout)
-
-	for time.Now().Before(deadline) {
-		udid, _ := FindRunningAndroidEmulator(avdName)
-		if udid != "" {
-			// Check if the system has fully booted.
-			out, err := packageExecutor.Output(CmdAdb, "-s", udid, "shell", "getprop", "sys.boot_completed")
-			if err == nil && strings.TrimSpace(string(out)) == "1" {
-				return udid, nil
-			}
-		}
-
-		time.Sleep(androidBootPollInterval)
-	}
-
-	// Last attempt: maybe it booted right at the deadline.
-	if udid, _ := FindRunningAndroidEmulator(avdName); udid != "" {
-		return udid, nil
-	}
-
-	return "starting", fmt.Errorf("timed out waiting for Android emulator '%s' to boot after %s", avdName, androidBootTimeout) //nolint:err113
-}
-
-// stopAndroidEmulator kills a running Android emulator.
-// Returns (true, nil) on success, (true, err) if found but kill failed, (false, nil) if not found.
-func stopAndroidEmulator(deviceID string) (bool, error) {
-	udid, _ := FindRunningAndroidEmulator(deviceID)
-	if udid == "" {
-		return false, nil
-	}
-
-	if err := packageExecutor.Run(CmdAdb, "-s", udid, "emu", "kill"); err != nil {
-		return true, fmt.Errorf("failed to stop Android emulator '%s': %w", deviceID, err)
-	}
-
-	return true, nil
-}
-
-// restartAndroidEmulator stops then starts an Android emulator.
-// Returns (true, nil) on success, (true, err) if found but restart failed, (false, nil) if not found.
-func restartAndroidEmulator(deviceID string) (bool, error) {
-	_, _ = stopAndroidEmulator(deviceID)
-
-	return startAndroidEmulator(deviceID, false)
-}
-
-// deleteAndroidEmulator removes an Android AVD permanently.
-// Returns (true, nil) on success, (true, err) if found but delete failed, (false, nil) if not found.
-func deleteAndroidEmulator(deviceID string) (bool, error) {
-	if !DoesAndroidAVDExist(deviceID) {
-		return false, nil
-	}
-
-	_, _ = stopAndroidEmulator(deviceID)
-
-	if err := packageExecutor.Run(CmdAvdManager, "delete", "avd", "-n", deviceID); err != nil {
-		return true, fmt.Errorf("failed to delete Android emulator '%s': %w", deviceID, err)
-	}
-
-	return true, nil
-}
-
-// eraseAndroidEmulator factory resets an Android emulator.
-// Returns (true, nil) on success, (true, err) if found but erase failed, (false, nil) if not found.
-func eraseAndroidEmulator(deviceID string) (bool, error) {
-	if !DoesAndroidAVDExist(deviceID) {
-		return false, nil
-	}
-
-	_, _ = stopAndroidEmulator(deviceID)
-
-	_, err := packageExecutor.Start(CmdEmulator, "-avd", deviceID, "-wipe-data")
-	if err != nil {
-		return true, fmt.Errorf("failed to erase Android emulator '%s': %w", deviceID, err)
-	}
-
-	return true, nil
-}
+// --- Old functions removed ---
 
 // --- Device Lookup Helpers ---
 
@@ -667,98 +334,11 @@ func FindRunningAndroidEmulator(avdName string) (string, string) {
 	return "", ""
 }
 
-// FindRunningDevice finds a running device by ID, or the active device if ID is empty.
-func FindRunningDevice(deviceID string) (udid, name string, isAndroid bool, err error) {
-	if deviceID == "" {
-		if runtime.GOOS == DarwinOS {
-			if sim, errSim := getRunningIOSSimulator(); errSim == nil {
-				return sim.udid, sim.name, false, nil
-			}
-		}
-
-		if emu, errEmu := getRunningAndroidEmulator(); errEmu == nil {
-			return emu.udid, emu.name, true, nil
-		}
-
-		return "", "", false, ErrNoActiveDevice
-	}
-
-	if runtime.GOOS == DarwinOS {
-		device := FindIOSSimulatorByID(deviceID)
-		if device != nil && device.State == StateBooted {
-			return device.UDID, device.Name, false, nil
-		}
-	}
-
-	u, n := FindRunningAndroidEmulator(deviceID)
-	if u != "" {
-		return u, n, true, nil
-	}
-
-	return "", "", false, fmt.Errorf("device %q: %w", deviceID, ErrDeviceNotRunning)
-}
-
-// DoesAndroidAVDExist checks whether an AVD with the given name is defined.
-func DoesAndroidAVDExist(avdName string) bool {
-	output, err := packageExecutor.Output(CmdEmulator, "-list-avds")
-	if err != nil {
-		return false
-	}
-
-	lines := strings.SplitSeq(strings.TrimSpace(string(output)), "\n")
-	for line := range lines {
-		if strings.TrimSpace(line) == avdName {
-			return true
-		}
-	}
-
-	return false
-}
-
-// IsAndroidEmulatorRunning reports whether an emulator with the given AVD name is currently running.
-func IsAndroidEmulatorRunning(avdName string) bool {
-	udid, _ := FindRunningAndroidEmulator(avdName)
-
-	return udid != ""
-}
-
-// getRunningIOSSimulator returns the first booted iOS simulator, for auto-selection.
-func getRunningIOSSimulator() (*iOSSimulator, error) {
-	sims := GetIOSSimulators()
-	for _, sim := range sims {
-		if sim.State == StateBooted {
-			return &iOSSimulator{udid: sim.UDID, name: sim.Name}, nil
-		}
-	}
-
-	return nil, ErrNoRunningIOSSimulator
-}
-
-// getRunningAndroidEmulator returns any currently running Android emulator, for auto-selection.
-func getRunningAndroidEmulator() (*androidEmulator, error) {
-	udid, name := FindRunningAndroidEmulator("")
-	if udid != "" {
-		return &androidEmulator{udid: udid, name: name}, nil
-	}
-
-	return nil, ErrNoRunningAndroidEmulator
-}
-
-// executeDeviceAction executes an iOS or Android device action with a spinner.
-func executeDeviceAction(actionIng, actionEd, deviceID string, iosFunc, androidFunc func(string) (bool, error)) error {
+// executeDeviceAction executes a device action with a spinner across all managers.
+func executeDeviceAction(actionIng, actionEd, deviceID string, action func(m DeviceManager, id string) (bool, error)) error {
 	err := RunSpinner(fmt.Sprintf("%s device %q...", actionIng, deviceID), func() error {
-		if runtime.GOOS == DarwinOS && iosFunc != nil {
-			found, err := iosFunc(deviceID)
-			if err != nil {
-				return err
-			}
-			if found {
-				return nil
-			}
-		}
-
-		if androidFunc != nil {
-			found, err := androidFunc(deviceID)
+		for _, m := range GetManagers() {
+			found, err := action(m, deviceID)
 			if err != nil {
 				return err
 			}

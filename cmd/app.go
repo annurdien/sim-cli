@@ -60,18 +60,12 @@ If no device is specified, the first booted device is used automatically.`,
 func findDeviceForAppInstall(deviceID, ext string) (udid, name string, isAndroid bool, err error) {
 	switch ext {
 	case ExtAPK:
-		if deviceID == "" {
-			emu, errEmu := getRunningAndroidEmulator()
-			if errEmu != nil {
-				return "", "", true, errEmu
-			}
-
-			return emu.udid, emu.name, true, nil
+		u, n, isA, err := FindRunningDevice(deviceID)
+		if err != nil {
+			return "", "", true, err
 		}
-
-		u, n := FindRunningAndroidEmulator(deviceID)
-		if u == "" {
-			return "", "", true, fmt.Errorf("device %q: %w", deviceID, ErrAndroidEmulatorNotRunning)
+		if !isA {
+			return "", "", true, ErrAndroidEmulatorNotRunning
 		}
 
 		return u, n, true, nil
@@ -81,21 +75,15 @@ func findDeviceForAppInstall(deviceID, ext string) (udid, name string, isAndroid
 			return "", "", false, ErrIOSMacOnly
 		}
 
-		if deviceID == "" {
-			sim, errSim := getRunningIOSSimulator()
-			if errSim != nil {
-				return "", "", false, errSim
-			}
-
-			return sim.udid, sim.name, false, nil
+		u, n, isA, err := FindRunningDevice(deviceID)
+		if err != nil {
+			return "", "", false, err
+		}
+		if isA {
+			return "", "", false, ErrIOSSimulatorNotRunning
 		}
 
-		device := FindIOSSimulatorByID(deviceID)
-		if device == nil || device.State != StateBooted {
-			return "", "", false, fmt.Errorf("device %q: %w", deviceID, ErrIOSSimulatorNotRunning)
-		}
-
-		return device.UDID, device.Name, false, nil
+		return u, n, false, nil
 
 	default:
 		return "", "", false, fmt.Errorf("%w: %s", ErrUnsupportedAppFormat, ext)
@@ -136,33 +124,7 @@ func InstallApp(deviceID, appPath string) error {
 }
 
 func findDeviceForUninstall(deviceID string) (udid, name string, isAndroid bool, err error) {
-	if deviceID == "" {
-		if runtime.GOOS == DarwinOS {
-			if sim, errSim := getRunningIOSSimulator(); errSim == nil {
-				return sim.udid, sim.name, false, nil
-			}
-		}
-
-		if emu, errEmu := getRunningAndroidEmulator(); errEmu == nil {
-			return emu.udid, emu.name, true, nil
-		}
-
-		return "", "", false, ErrNoActiveDevice
-	}
-
-	if runtime.GOOS == DarwinOS {
-		device := FindIOSSimulatorByID(deviceID)
-		if device != nil && device.State == StateBooted {
-			return device.UDID, device.Name, false, nil
-		}
-	}
-
-	u, n := FindRunningAndroidEmulator(deviceID)
-	if u != "" {
-		return u, n, true, nil
-	}
-
-	return "", "", false, fmt.Errorf("device %q: %w", deviceID, ErrDeviceNotRunning)
+	return FindRunningDevice(deviceID)
 }
 
 func UninstallApp(deviceID, appID string) error {
