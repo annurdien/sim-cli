@@ -648,6 +648,37 @@ func FindRunningAndroidEmulator(avdName string) (string, string) {
 	return "", ""
 }
 
+// FindRunningDevice finds a running device by ID, or the active device if ID is empty.
+func FindRunningDevice(deviceID string) (udid, name string, isAndroid bool, err error) {
+	if deviceID == "" {
+		if runtime.GOOS == DarwinOS {
+			if sim, errSim := getRunningIOSSimulator(); errSim == nil {
+				return sim.udid, sim.name, false, nil
+			}
+		}
+
+		if emu, errEmu := getRunningAndroidEmulator(); errEmu == nil {
+			return emu.udid, emu.name, true, nil
+		}
+
+		return "", "", false, ErrNoActiveDevice
+	}
+
+	if runtime.GOOS == DarwinOS {
+		device := FindIOSSimulatorByID(deviceID)
+		if device != nil && device.State == StateBooted {
+			return device.UDID, device.Name, false, nil
+		}
+	}
+
+	u, n := FindRunningAndroidEmulator(deviceID)
+	if u != "" {
+		return u, n, true, nil
+	}
+
+	return "", "", false, fmt.Errorf("device %q: %w", deviceID, ErrDeviceNotRunning)
+}
+
 // DoesAndroidAVDExist checks whether an AVD with the given name is defined.
 func DoesAndroidAVDExist(avdName string) bool {
 	output, err := packageExecutor.Output(CmdEmulator, "-list-avds")

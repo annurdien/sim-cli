@@ -69,6 +69,9 @@ func init() {
 	rootCmd.AddCommand(ltsCmd)
 	rootCmd.AddCommand(screenshotCmd)
 	rootCmd.AddCommand(recordCmd)
+	rootCmd.AddCommand(logsCmd)
+	rootCmd.AddCommand(pushCmd)
+	rootCmd.AddCommand(configCmd)
 	rootCmd.AddCommand(openCmd)
 	rootCmd.AddCommand(doctorCmd)
 

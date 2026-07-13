@@ -9,6 +9,10 @@ import (
 // Config holds the application's persistent configuration.
 type Config struct {
 	LastStartedDevice *Device `json:"lastStartedDevice,omitempty"`
+	DefaultDevice     string  `json:"defaultDevice,omitempty"`
+	OutputDir         string  `json:"outputDir,omitempty"`
+	GifFps            int     `json:"gifFps,omitempty"`
+	GifScale          int     `json:"gifScale,omitempty"`
 }
 
 // GetConfigDir returns the path to the sim-cli configuration directory.

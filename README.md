@@ -149,6 +149,9 @@ sim last
 | `open [device] <url>` | `o` | Open a deeplink or URL. Device is optional — defaults to the first booted device. |
 | `screenshot <device> [file]` | `ss`, `shot` | Take a screenshot of a device. |
 | `record <device> [file]` | `rec` | Record the screen of a device. |
+| `logs [device]` | `log` | Stream real-time logs from a device. |
+| `push [dev] <id> <file>`| - | Send a push notification (iOS only). |
+| `config` | - | Manage sim-cli configuration values. |
 | `last` | - | Show the last used device. |
 | `lts` | - | Start the last used device (short for `sim start lts`). |
 | `completion <shell>` | - | Generate shell autocompletion script. |
@@ -183,15 +186,43 @@ sim open "iPhone 15 Pro" "myapp://settings"
 sim open "Pixel_7_API_34" "https://example.com"
 ```
 
+### logs Options
+
+| Flag | Shorthand | Description |
+|---|---|---|
+| `--level` | `-l` | Filter logs by level (`debug`, `info`, `warn`, `error`). |
+| `--filter` | `-f` | Filter logs in real-time with a grep pattern. |
+| `--app` | `-a` | Filter logs by app bundle ID (iOS) or package name (Android). |
+
+### push Options
+
+| Flag | Shorthand | Description |
+|---|---|---|
+| `--template` | `-t` | Generate a sample push payload template (`push.json`) in the current directory. |
+
 ## Configuration
 
-SIM-CLI stores its runtime state (e.g., last used device) in a JSON file at:
+SIM-CLI stores its runtime state (e.g., last used device) and user preferences in a JSON file at:
 
 ```
 ~/.sim-cli/config.json
 ```
 
-This file is managed automatically. You do not need to edit it manually.
+You can view and modify these settings using the `config` command:
+
+```bash
+# View all configuration settings
+sim config show
+
+# Set the default directory for saving screenshots and recordings
+sim config set outputDir ~/Desktop/captures
+
+# Configure GIF recording settings
+sim config set gifFps 15
+sim config set gifScale 320
+```
+
+Supported configuration keys: `defaultDevice`, `outputDir`, `gifFps`, `gifScale`.
 
 The project-level `config.yaml` in the repository root defines the release version and metadata used by the build system and CI/CD pipeline:
 
