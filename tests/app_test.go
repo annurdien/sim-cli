@@ -31,6 +31,10 @@ func TestAppInstall_iOS(t *testing.T) {
 
 			return []byte{}, nil
 		},
+		onRun: func(name string, args []string) error {
+			recorded = append(recorded, append([]string{name}, args...))
+			return nil
+		},
 	}
 	cmd.SetExecutor(exec)
 	t.Cleanup(func() { cmd.SetExecutor(&cmd.OSCommandExecutor{}) })
@@ -86,6 +90,10 @@ func TestAppInstall_Android(t *testing.T) {
 
 			return []byte{}, nil
 		},
+		onRun: func(name string, args []string) error {
+			recorded = append(recorded, append([]string{name}, args...))
+			return nil
+		},
 	}
 	cmd.SetExecutor(exec)
 	t.Cleanup(func() { cmd.SetExecutor(&cmd.OSCommandExecutor{}) })
@@ -140,6 +148,10 @@ func TestAppUninstall_Android(t *testing.T) {
 			}
 
 			return []byte{}, nil
+		},
+		onRun: func(name string, args []string) error {
+			recorded = append(recorded, append([]string{name}, args...))
+			return nil
 		},
 	}
 	cmd.SetExecutor(exec)
