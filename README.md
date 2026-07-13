@@ -23,6 +23,10 @@ SIM-CLI provides a simple and unified interface to manage your iOS simulators an
 ## Features
 
 - **Device Management**: List, start, stop, shutdown, restart, and delete simulators/emulators.
+- **Factory Reset**: Quickly erase device data with the `erase` command.
+- **Device Cloning**: Duplicate existing iOS simulators instantly.
+- **App Management**: Install and uninstall `.apk`, `.app`, and `.ipa` files automatically to the correct device type.
+- **Shell Autocompletion**: Tab completion for bash, zsh, fish, and powershell, including device names.
 - **Deep Linking**: Instantly open any URL or deeplink on a running device.
 - **Media Capture**: Take screenshots and record screen activity with ease.
 - **Clipboard Integration**: Copy screenshots and recordings directly to your clipboard.
@@ -91,8 +95,30 @@ sim open "myapp://home"
 # 6. Record a 10-second GIF
 sim record "iPhone 15 Pro" --duration 10 --gif
 
-# 7. Stop the device
+# 7. Install an app (auto-selects device based on extension)
+sim install app-release.apk
+
+# 8. Factory reset a device
+sim erase "iPhone 15 Pro"
+
+# 9. Stop the device
 sim stop "iPhone 15 Pro"
+```
+
+### Shell Autocompletion
+
+To enable tab completion for your shell (which auto-completes device names and commands), run:
+
+```bash
+# Zsh
+sim completion zsh > ~/.zshrc_sim_completion
+source ~/.zshrc_sim_completion
+
+# Bash
+sim completion bash > /etc/bash_completion.d/sim
+
+# Fish
+sim completion fish > ~/.config/fish/completions/sim.fish
 ```
 
 ### Smart Device Shortcuts
@@ -116,11 +142,16 @@ sim last
 | `shutdown <device>` | `sd` | Shutdown a simulator or emulator. |
 | `restart <device>` | `r` | Restart a simulator or emulator. |
 | `delete <device>` | `d`, `del` | **Permanently** delete a simulator or emulator. |
+| `erase <device>` | `reset` | Factory reset a device, wiping its data. |
+| `clone <source> <new>`| - | Clone an iOS simulator to a new instance. |
+| `install [dev] <app>`| `i` | Install an app on a device (`.apk`, `.app`, `.ipa`). |
+| `uninstall [dev] <id>`| `u`, `remove`| Uninstall an app from a device by ID or package name. |
 | `open [device] <url>` | `o` | Open a deeplink or URL. Device is optional — defaults to the first booted device. |
 | `screenshot <device> [file]` | `ss`, `shot` | Take a screenshot of a device. |
 | `record <device> [file]` | `rec` | Record the screen of a device. |
 | `last` | - | Show the last used device. |
 | `lts` | - | Start the last used device (short for `sim start lts`). |
+| `completion <shell>` | - | Generate shell autocompletion script. |
 | `version` | `-v` | Show the current version. |
 | `help` | - | Show help information. |
 
@@ -175,12 +206,13 @@ To release a new version, bump `version` in `config.yaml` and push with `release
 
 ## Safety & Best Practices
 
-### Delete Command
+### Delete and Erase Commands
 
 The `delete` command is destructive and **permanently removes** the simulator or emulator.
+The `erase` command acts as a factory reset and wipes all user data on the device.
 
-- Always double-check the device name or UDID with `sim list` before deleting.
-- Running devices are automatically shut down before deletion.
+- Always double-check the device name or UDID with `sim list` before deleting or erasing.
+- You can bypass the interactive confirmation prompt by passing the `--force` or `-f` flag.
 - Deleted simulators must be recreated through Xcode (for iOS) or the AVD Manager (for Android).
 
 ## Contributing
