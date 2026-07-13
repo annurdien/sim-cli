@@ -326,7 +326,16 @@ var screenshotCmd = &cobra.Command{
 			return err
 		}
 
+		config, _ := LoadConfig()
+		if config == nil {
+			config = &Config{}
+		}
+
 		outputDir, _ := cmd.Flags().GetString("output-dir")
+		if outputDir == "" && config.OutputDir != "" {
+			outputDir = config.OutputDir
+		}
+
 		if outputFile == "" {
 			outputFile = GenerateFilename(PrefixScreenshot, c.GetName(), ExtPNG)
 		}
@@ -368,7 +377,16 @@ The recording can be stopped by pressing Ctrl+C or by specifying a duration.`,
 			return err
 		}
 
+		config, _ := LoadConfig()
+		if config == nil {
+			config = &Config{}
+		}
+
 		outputDir, _ := cmd.Flags().GetString("output-dir")
+		if outputDir == "" && config.OutputDir != "" {
+			outputDir = config.OutputDir
+		}
+
 		if outputFile == "" {
 			outputFile = GenerateFilename(PrefixRecording, c.GetName(), ExtMP4)
 		}
@@ -384,7 +402,15 @@ The recording can be stopped by pressing Ctrl+C or by specifying a duration.`,
 		}
 
 		fps, _ := cmd.Flags().GetInt("fps")
+		if !cmd.Flags().Changed("fps") && config.GifFps > 0 {
+			fps = config.GifFps
+		}
+
 		scale, _ := cmd.Flags().GetInt("scale")
+		if !cmd.Flags().Changed("scale") && config.GifScale > 0 {
+			scale = config.GifScale
+		}
+
 		convertToGif, _ := cmd.Flags().GetBool("gif")
 		shouldCopy, _ := cmd.Flags().GetBool("copy")
 

@@ -1,0 +1,131 @@
+package cmd
+
+import (
+	"fmt"
+	"os"
+	"os/exec"
+	"os/signal"
+	"strings"
+
+	"github.com/spf13/cobra"
+)
+
+var (
+	logLevel  string
+	logFilter string
+	logApp    string
+)
+
+var logsCmd = &cobra.Command{
+	Use:     "logs [device-name-or-udid]",
+	Aliases: []string{"log"},
+	Short:   "Stream live logs from a device",
+	Long: `Stream logs from a running iOS simulator or Android emulator in real-time.
+	
+If no device is specified, the first booted device is used automatically.`,
+	ValidArgsFunction: validDeviceArgs,
+	Args:              cobra.MaximumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		deviceID := ""
+		if len(args) > 0 {
+			deviceID = args[0]
+		}
+
+		return streamLogs(deviceID, logLevel, logFilter, logApp)
+	},
+}
+
+func init() {
+	logsCmd.Flags().StringVarP(&logLevel, "level", "l", "info", "Filter by log level (debug, info, warn, error)")
+	logsCmd.Flags().StringVarP(&logFilter, "filter", "f", "", "Grep pattern to filter logs in real-time")
+	logsCmd.Flags().StringVarP(&logApp, "app", "a", "", "Filter by app bundle ID (iOS) or package name (Android)")
+}
+
+func streamLogs(deviceID, level, filter, app string) error {
+	udid, name, isAndroid, err := FindRunningDevice(deviceID)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Streaming logs from '%s' (Press Ctrl+C to stop)...\n", name)
+
+	var logCmd *exec.Cmd
+
+	if isAndroid {
+		// Android logcat command
+		args := []string{"-s", udid, "logcat"}
+		if level != "" {
+			lvl := "I"
+			switch level {
+			case "debug":
+				lvl = "D"
+			case "info":
+				lvl = "I"
+			case "warn":
+				lvl = "W"
+			case "error":
+				lvl = "E"
+			}
+			args = append(args, "*:"+lvl)
+		}
+
+		if app != "" {
+			// Get PID for the app
+			pidOut, _ := packageExecutor.Output(CmdAdb, "-s", udid, "shell", "pidof", app)
+			pid := strings.TrimSpace(string(pidOut))
+			if pid != "" {
+				args = append(args, "--pid="+pid)
+			} else {
+				fmt.Printf("Warning: App '%s' not found or not running. Logs may be empty.\n", app)
+			}
+		}
+
+		if filter != "" {
+			// Need to use bash to pipe through grep
+			commandStr := fmt.Sprintf("%s %s | grep --line-buffered '%s'", CmdAdb, strings.Join(args, " "), filter)
+			logCmd = exec.Command("sh", "-c", commandStr)
+		} else {
+			logCmd = exec.Command(CmdAdb, args...)
+		}
+	} else {
+		// iOS log stream command
+		args := []string{"simctl", "spawn", udid, "log", "stream"}
+
+		if level != "" {
+			args = append(args, "--level", level)
+		}
+
+		if app != "" {
+			args = append(args, "--predicate", fmt.Sprintf("subsystem == \"%s\"", app))
+		}
+
+		if filter != "" {
+			commandStr := fmt.Sprintf("%s %s | grep --line-buffered '%s'", CmdXCrun, strings.Join(args, " "), filter)
+			logCmd = exec.Command("sh", "-c", commandStr)
+		} else {
+			logCmd = exec.Command(CmdXCrun, args...)
+		}
+	}
+
+	// We are bypassing packageExecutor here because we need an interactive stream connected to os.Stdout
+	logCmd.Stdout = os.Stdout
+	logCmd.Stderr = os.Stderr
+
+	if err := logCmd.Start(); err != nil {
+		return fmt.Errorf("failed to start log stream: %w", err)
+	}
+
+	// Wait for Ctrl+C
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+
+	go func() {
+		<-c
+		fmt.Println("\nStopping log stream...")
+		_ = logCmd.Process.Kill()
+	}()
+
+	_ = logCmd.Wait()
+
+	return nil
+}
