@@ -79,7 +79,7 @@ func ListIOSCreateTypes() error {
 		return ErrIOSMacOnly
 	}
 
-	fmt.Println("--- iOS Device Types ---")
+	PrintInfo("--- iOS Device Types ---")
 
 	out, err := packageExecutor.Output(CmdXCrun, CmdSimctl, "list", "devicetypes", "--json")
 	if err == nil {
@@ -91,13 +91,13 @@ func ListIOSCreateTypes() error {
 		}
 
 		if json.Unmarshal(out, &list) == nil {
+			var rows [][]string
 			for _, dt := range list.DeviceTypes {
-				fmt.Printf("%s\t%s\n", dt.Name, dt.Identifier)
+				rows = append(rows, []string{dt.Name, dt.Identifier})
 			}
+			RenderTable([]string{"iOS Device Type", "Identifier"}, rows)
 		}
 	}
-
-	fmt.Println("\n--- iOS Runtimes ---")
 
 	outRun, errRun := packageExecutor.Output(CmdXCrun, CmdSimctl, "list", "runtimes", "--json")
 	if errRun == nil {
@@ -110,11 +110,13 @@ func ListIOSCreateTypes() error {
 		}
 
 		if json.Unmarshal(outRun, &runList) == nil {
+			var rows [][]string
 			for _, r := range runList.Runtimes {
 				if r.IsAvailable {
-					fmt.Printf("%s\t%s\n", r.Name, r.Identifier)
+					rows = append(rows, []string{r.Name, r.Identifier})
 				}
 			}
+			RenderTable([]string{"iOS Runtime", "Identifier"}, rows)
 		}
 	}
 
@@ -134,34 +136,38 @@ func CreateIOSDevice(name, deviceType, runtimeID string) error {
 }
 
 func ListAndroidCreateTypes() error {
-	fmt.Println("--- Android System Images ---")
-
 	out, err := packageExecutor.Output("sdkmanager", "--list")
 	if err != nil {
-		fmt.Println("Warning: sdkmanager not found or failed.")
+		PrintInfo("Warning: sdkmanager not found or failed.")
 	} else {
+		var rows [][]string
 		lines := strings.Split(string(out), "\n")
 		for _, line := range lines {
 			if strings.Contains(line, "system-images;") {
 				parts := strings.SplitN(line, " ", 2)
 				if len(parts) > 0 {
-					fmt.Println(parts[0])
+					rows = append(rows, []string{parts[0]})
 				}
 			}
 		}
+		if len(rows) > 0 {
+			RenderTable([]string{"Android System Images"}, rows)
+		}
 	}
-
-	fmt.Println("\n--- Android Device Types ---")
 
 	outAvd, errAvd := packageExecutor.Output("avdmanager", "list", "device")
 	if errAvd != nil {
-		fmt.Println("Warning: avdmanager not found or failed.")
+		PrintInfo("Warning: avdmanager not found or failed.")
 	} else {
+		var rows [][]string
 		lines := strings.Split(string(outAvd), "\n")
 		for _, line := range lines {
 			if strings.HasPrefix(strings.TrimSpace(line), "id:") {
-				fmt.Println(strings.TrimSpace(line))
+				rows = append(rows, []string{strings.TrimSpace(line)})
 			}
+		}
+		if len(rows) > 0 {
+			RenderTable([]string{"Android Device Types"}, rows)
 		}
 	}
 

@@ -38,7 +38,7 @@ var listCmd = &cobra.Command{
 		devices = append(devices, emulators...)
 
 		if len(devices) == 0 {
-			fmt.Println("No simulators or emulators found")
+			PrintInfo("No simulators or emulators found")
 
 			return
 		}

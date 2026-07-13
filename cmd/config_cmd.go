@@ -29,7 +29,7 @@ var configShowCmd = &cobra.Command{
 			return err
 		}
 
-		fmt.Println(string(data))
+		PrintInfo(string(data))
 
 		return nil
 	},
@@ -110,7 +110,7 @@ var configPathCmd = &cobra.Command{
 	Use:   "path",
 	Short: "Print the path to the configuration file",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		fmt.Println(GetConfigPath())
+		PrintInfo(GetConfigPath())
 
 		return nil
 	},

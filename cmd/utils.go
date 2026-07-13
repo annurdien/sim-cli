@@ -45,8 +45,8 @@ func copyFileToClipboard(filePath string) error {
 	case "linux":
 		return copyFileToClipboardLinux(filePath, ext)
 	default:
-		// Windows and other platforms: fall back to copying the file path as text.
-		fmt.Printf("Warning: clipboard file copy not supported on %s; copying file path instead.\n", runtime.GOOS)
+		PrintInfo( // Windows and other platforms: fall back to copying the file path as text.
+			fmt.Sprintf("Warning: clipboard file copy not supported on %s; copying file path instead.", runtime.GOOS))
 		return copyToClipboard(filePath)
 	}
 }
@@ -75,7 +75,7 @@ func copyFileToClipboardDarwin(filePath, ext string) error {
 // Falls back to copying the file path as text if xclip is not installed.
 func copyFileToClipboardLinux(filePath, ext string) error {
 	if !CommandExists(CmdXclip) {
-		fmt.Printf("Warning: xclip not found; copying file path to clipboard instead. Install xclip for full clipboard support.\n")
+		PrintInfo("Warning: xclip not found; copying file path to clipboard instead. Install xclip for full clipboard support.")
 		return copyToClipboard(filePath)
 	}
 
@@ -88,8 +88,8 @@ func copyFileToClipboardLinux(filePath, ext string) error {
 	case ExtGIF:
 		mimeType = "image/gif"
 	default:
-		// For MP4 and other non-image files, copy the path as text.
-		fmt.Printf("Note: copying file path to clipboard (binary clipboard not supported for %s files on Linux).\n", ext)
+		PrintInfo( // For MP4 and other non-image files, copy the path as text.
+			fmt.Sprintf("Note: copying file path to clipboard (binary clipboard not supported for %s files on Linux).", ext))
 		return copyToClipboard(filePath)
 	}
 
@@ -128,14 +128,13 @@ func convertToGIF(inputFile, outputFile string, fps, scale int) error {
 		return ErrFFmpegNotInstalled
 	}
 
-	fmt.Println("Converting to GIF...")
+	PrintInfo("Converting to GIF...")
 	vf := fmt.Sprintf("fps=%d,scale=%d:-1:flags=lanczos", fps, scale)
 
 	if output, err := packageExecutor.Output(CmdFFmpeg, "-i", inputFile, "-vf", vf, "-c", "gif", "-f", "gif", outputFile); err != nil {
 		return fmt.Errorf("failed to convert to GIF: %w\nOutput: %s", err, string(output))
 	}
-
-	fmt.Printf("GIF saved to: %s\n", outputFile)
+	PrintInfo(fmt.Sprintf("GIF saved to: %s", outputFile))
 
 	return nil
 }

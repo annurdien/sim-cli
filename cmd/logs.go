@@ -52,8 +52,7 @@ func streamLogs(deviceID, level, filter, app string) error {
 	if err != nil {
 		return err
 	}
-
-	fmt.Printf("Streaming logs from '%s' (Press Ctrl+C to stop)...\n", name)
+	PrintInfo(fmt.Sprintf("Streaming logs from '%s' (Press Ctrl+C to stop)...", name))
 
 	var logCmd *exec.Cmd
 
@@ -82,7 +81,7 @@ func streamLogs(deviceID, level, filter, app string) error {
 			if pid != "" {
 				args = append(args, "--pid="+pid)
 			} else {
-				fmt.Printf("Warning: App '%s' not found or not running. Logs may be empty.\n", app)
+				PrintInfo(fmt.Sprintf("Warning: App '%s' not found or not running. Logs may be empty.", app))
 			}
 		}
 
@@ -127,7 +126,7 @@ func streamLogs(deviceID, level, filter, app string) error {
 
 	go func() {
 		<-c
-		fmt.Println("\nStopping log stream...")
+		PrintInfo("\nStopping log stream...")
 		_ = logCmd.Process.Kill()
 	}()
 

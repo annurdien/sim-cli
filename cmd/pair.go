@@ -24,14 +24,14 @@ If arguments are not provided, an interactive prompt will allow you to select th
 			watchID = args[0]
 			phoneID = args[1]
 		} else {
-			fmt.Println("Select the Apple Watch Simulator:")
+			PrintInfo("Select the Apple Watch Simulator:")
 			selectedWatch, err := PromptDeviceSelector("all")
 			if err != nil {
 				return err
 			}
 			watchID = selectedWatch
 
-			fmt.Println("Select the iPhone Simulator:")
+			PrintInfo("Select the iPhone Simulator:")
 			selectedPhone, err := PromptDeviceSelector("all")
 			if err != nil {
 				return err
