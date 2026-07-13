@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -20,9 +21,13 @@ const asciiArt = `
 `
 
 var rootCmd = &cobra.Command{
-	Use:     "sim",
-	Version: Version,
-	Short:   "CLI tool to manage iOS simulators and Android emulators",
+	Use:           "sim",
+	Version:       Version,
+	SilenceErrors: true,
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		cmd.SilenceUsage = true
+	},
+	Short: "CLI tool to manage iOS simulators and Android emulators",
 	Long: `SIM-CLI is a command-line tool for managing iOS simulators and Android emulators.
 	
 It provides a simple interface to:
@@ -48,7 +53,16 @@ It provides a simple interface to:
 
 // Execute is the entry point for the CLI.
 func Execute() error {
-	return rootCmd.Execute()
+	err := rootCmd.Execute()
+	if err != nil {
+		if errors.Is(err, ErrSelectionCancelled) {
+			PrintInfo("Device selection cancelled.")
+		} else {
+			PrintError(err.Error())
+		}
+	}
+
+	return err
 }
 
 func init() {
