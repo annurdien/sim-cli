@@ -151,6 +151,9 @@ sim last
 | `record <device> [file]` | `rec` | Record the screen of a device. |
 | `logs [device]` | `log` | Stream real-time logs from a device. |
 | `push [dev] <id> <file>`| - | Send a push notification (iOS only). |
+| `create` | - | Create a new iOS simulator or Android emulator. |
+| `status` | - | Show a compact dashboard of only running devices. |
+| `copy to/from` | - | Transfer files to or from a device. |
 | `config` | - | Manage sim-cli configuration values. |
 | `last` | - | Show the last used device. |
 | `lts` | - | Start the last used device (short for `sim start lts`). |
@@ -199,6 +202,26 @@ sim open "Pixel_7_API_34" "https://example.com"
 | Flag | Shorthand | Description |
 |---|---|---|
 | `--template` | `-t` | Generate a sample push payload template (`push.json`) in the current directory. |
+
+### create Options
+
+| Flag | Shorthand | Description |
+|---|---|---|
+| `--ios` / `--android` | - | Specify the target platform (required). |
+| `--name` | `-n` | The name for the new device. |
+| `--type` | `-t` | The hardware device type (e.g., `iPhone-15`, `pixel_7`). |
+| `--runtime` | `-r` | The OS runtime/system image (e.g., `iOS-17-0`). |
+| `--list-types` | - | Display all available hardware types and OS runtimes for the platform instead of creating a device. |
+
+### copy Usage
+
+```bash
+# Copy a local file to the device (iOS: Photos app, Android: /sdcard/Download)
+sim copy to "iPhone 15 Pro" ~/Pictures/test.png
+
+# Copy a remote file from an Android device to your local machine
+sim copy from "Pixel_7" /sdcard/Download/test.png ./
+```
 
 ## Configuration
 
