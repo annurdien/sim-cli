@@ -43,6 +43,7 @@ func PromptDeviceSelector(filter string) (string, error) {
 				Title("Select a Device").
 				Options(options...).
 				Value(&selectedUDID).
+				Filtering(true).
 				Height(10), // Show up to 10 items
 		),
 	)

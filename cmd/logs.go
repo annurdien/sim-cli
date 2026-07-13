@@ -2,9 +2,7 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"os/exec"
-	"os/signal"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -47,6 +45,7 @@ func init() {
 	logsCmd.Flags().StringVarP(&logApp, "app", "a", "", "Filter by app bundle ID (iOS) or package name (Android)")
 }
 
+//nolint:gocyclo,cyclop
 func streamLogs(deviceID, level, filter, app string) error {
 	udid, name, isAndroid, err := FindRunningDevice(deviceID)
 	if err != nil {
@@ -112,25 +111,22 @@ func streamLogs(deviceID, level, filter, app string) error {
 		}
 	}
 
-	// We are bypassing packageExecutor here because we need an interactive stream connected to os.Stdout
-	logCmd.Stdout = os.Stdout
-	logCmd.Stderr = os.Stderr
+	stdout, err := logCmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	logCmd.Stderr = logCmd.Stdout // merge stderr into stdout for parsing
 
 	if err := logCmd.Start(); err != nil {
 		return fmt.Errorf("failed to start log stream: %w", err)
 	}
 
-	// Wait for Ctrl+C
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt)
+	err = runLogViewer(stdout)
 
-	go func() {
-		<-c
-		PrintInfo("\nStopping log stream...")
+	// Ensure the log command is killed when bubbletea exits
+	if logCmd.Process != nil {
 		_ = logCmd.Process.Kill()
-	}()
+	}
 
-	_ = logCmd.Wait()
-
-	return nil
+	return err
 }

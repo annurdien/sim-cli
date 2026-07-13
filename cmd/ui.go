@@ -29,6 +29,48 @@ var (
 	StyleError    = lipgloss.NewStyle().Foreground(ColorError).Bold(true)
 )
 
+// ApplyTheme applies the specified color theme to the UI elements.
+func ApplyTheme(theme string) {
+	switch theme {
+	case "catppuccin":
+		ColorBooted = lipgloss.Color("#A6DA95")   // Green
+		ColorShutdown = lipgloss.Color("#5B6078") // Surface
+		ColorIOS = lipgloss.Color("#8AADF4")      // Blue
+		ColorAndroid = lipgloss.Color("#A6DA95")  // Green
+		ColorHeader = lipgloss.Color("#C6A0F6")   // Mauve
+		ColorError = lipgloss.Color("#ED8796")    // Red
+		ColorSuccess = lipgloss.Color("#A6DA95")  // Green
+	case "dracula":
+		ColorBooted = lipgloss.Color("#50fa7b")
+		ColorShutdown = lipgloss.Color("#6272a4")
+		ColorIOS = lipgloss.Color("#8be9fd")
+		ColorAndroid = lipgloss.Color("#50fa7b")
+		ColorHeader = lipgloss.Color("#bd93f9")
+		ColorError = lipgloss.Color("#ff5555")
+		ColorSuccess = lipgloss.Color("#50fa7b")
+	default:
+		ColorBooted = lipgloss.Color("42")
+		ColorShutdown = lipgloss.Color("240")
+		ColorIOS = lipgloss.Color("33")
+		ColorAndroid = lipgloss.Color("40")
+		ColorHeader = lipgloss.Color("99")
+		ColorError = lipgloss.Color("196")
+		ColorSuccess = lipgloss.Color("46")
+	}
+
+	StyleBooted = lipgloss.NewStyle().Foreground(ColorBooted).Bold(true)
+	StyleShutdown = lipgloss.NewStyle().Foreground(ColorShutdown)
+	StyleIOS = lipgloss.NewStyle().Foreground(ColorIOS)
+	StyleAndroid = lipgloss.NewStyle().Foreground(ColorAndroid)
+	StyleHeader = lipgloss.NewStyle().Foreground(ColorHeader).Bold(true)
+	StyleSuccess = lipgloss.NewStyle().Foreground(ColorSuccess).Bold(true)
+	StyleError = lipgloss.NewStyle().Foreground(ColorError).Bold(true)
+
+	dashboardBaseStyle = lipgloss.NewStyle().
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderForeground(ColorShutdown)
+}
+
 // FormatState returns a styled string for device state.
 func FormatState(state string) string {
 	if state == StateBooted || state == "Booted" || state == "device" {
