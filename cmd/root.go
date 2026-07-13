@@ -36,7 +36,7 @@ It provides a simple interface to:
 		}
 
 		content := lipgloss.JoinVertical(lipgloss.Center,
-			lipgloss.NewStyle().Foreground(lipgloss.Color("99")).Bold(true).Render("📱 SIM-CLI"),
+			lipgloss.NewStyle().Foreground(lipgloss.Color("99")).Bold(true).Render("SIM-CLI"),
 			lipgloss.NewStyle().Foreground(lipgloss.Color("212")).Render("iOS Simulator & Android Emulator Manager"),
 			lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render(fmt.Sprintf("Version: %s", cmd.Version)),
 			"",
