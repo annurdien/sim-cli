@@ -18,7 +18,7 @@ import (
 
 // capturer is implemented by any device that can take screenshots and record video.
 type capturer interface {
-	Screenshot(outputFile string) error
+	Screenshot(outputFile string) (string, error)
 	Record(ctx context.Context, outputFile string) error
 	GetName() string
 }
@@ -40,22 +40,19 @@ func newIOSSimulator(deviceNameOrUDID string) (*iOSSimulator, error) {
 	return &iOSSimulator{udid: device.UDID, name: device.Name}, nil
 }
 
-func (s *iOSSimulator) Screenshot(outputFile string) error {
-	fmt.Printf("Taking screenshot of iOS simulator '%s'...\n", s.name)
+func (s *iOSSimulator) Screenshot(outputFile string) (string, error) {
 	fullPath := EnsureExtension(outputFile, ExtPNG)
 
 	cmd := exec.Command(CmdXCrun, CmdSimctl, "io", s.udid, "screenshot", fullPath)
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to take iOS screenshot: %w", err)
+		return "", fmt.Errorf("failed to take iOS screenshot: %w", err)
 	}
 
-	fmt.Printf("Screenshot saved to: %s\n", fullPath)
-
-	return nil
+	return fullPath, nil
 }
 
 func (s *iOSSimulator) Record(ctx context.Context, outputFile string) error {
-	fmt.Printf("Recording iOS simulator '%s' screen...\n", s.name)
+	PrintInfo(fmt.Sprintf("Recording iOS simulator '%s' screen...", s.name))
 	fullPath := EnsureExtension(outputFile, ExtMP4)
 
 	cmd := exec.Command(CmdXCrun, CmdSimctl, "io", s.udid, "recordVideo", "--codec=h264", "--force", fullPath)
@@ -119,8 +116,7 @@ func (e *androidEmulator) runADB(args ...string) error {
 	return nil
 }
 
-func (e *androidEmulator) Screenshot(outputFile string) error {
-	fmt.Printf("Taking screenshot of Android emulator '%s'...\n", e.name)
+func (e *androidEmulator) Screenshot(outputFile string) (string, error) {
 	fullPath := EnsureExtension(outputFile, ExtPNG)
 	devicePath := "/sdcard/screenshot.png"
 
@@ -129,20 +125,18 @@ func (e *androidEmulator) Screenshot(outputFile string) error {
 	}()
 
 	if err := e.runADB("shell", "screencap", "-p", devicePath); err != nil {
-		return fmt.Errorf("failed to take Android screenshot: %w", err)
+		return "", fmt.Errorf("failed to take Android screenshot: %w", err)
 	}
 
 	if err := e.runADB("pull", devicePath, fullPath); err != nil {
-		return fmt.Errorf("failed to pull Android screenshot: %w", err)
+		return "", fmt.Errorf("failed to pull Android screenshot: %w", err)
 	}
 
-	fmt.Printf("Screenshot saved to: %s\n", fullPath)
-
-	return nil
+	return fullPath, nil
 }
 
 func (e *androidEmulator) Record(ctx context.Context, outputFile string) error {
-	fmt.Printf("Recording Android emulator '%s' screen...\n", e.name)
+	PrintInfo(fmt.Sprintf("Recording Android emulator '%s' screen...", e.name))
 	fullPath := EnsureExtension(outputFile, ExtMP4)
 	devicePath := "/sdcard/recording.mp4"
 
@@ -157,7 +151,7 @@ func (e *androidEmulator) Record(ctx context.Context, outputFile string) error {
 		return fmt.Errorf("failed to start Android screen recording: %w", err)
 	}
 
-	fmt.Println("Recording started. Press Ctrl+C to stop.")
+	PrintInfo("Recording started. Press Ctrl+C to stop.")
 
 	<-ctx.Done()
 
@@ -178,7 +172,7 @@ func (e *androidEmulator) Record(ctx context.Context, outputFile string) error {
 		return fmt.Errorf("failed to pull Android recording: %w", err)
 	}
 
-	fmt.Printf("\nRecording saved to: %s\n", fullPath)
+	PrintSuccess(fmt.Sprintf("Recording saved to: %s", fullPath))
 
 	return nil
 }
@@ -210,14 +204,14 @@ func getCapturer(deviceID string) (capturer, error) {
 func getActiveDevice() (capturer, error) {
 	if runtime.GOOS == DarwinOS {
 		if sim, err := getRunningIOSSimulator(); err == nil {
-			fmt.Printf("Active device found: iOS Simulator '%s'\n", sim.name)
+			PrintInfo(fmt.Sprintf("Active device found: iOS Simulator '%s'", sim.name))
 
 			return sim, nil
 		}
 	}
 
 	if emu, err := getRunningAndroidEmulator(); err == nil {
-		fmt.Printf("Active device found: Android Emulator '%s'\n", emu.name)
+		PrintInfo(fmt.Sprintf("Active device found: Android Emulator '%s'", emu.name))
 
 		return emu, nil
 	}
@@ -344,15 +338,23 @@ var screenshotCmd = &cobra.Command{
 			outputFile = filepath.Join(outputDir, outputFile)
 		}
 
-		if err := c.Screenshot(outputFile); err != nil {
+		var finalPath string
+		err = RunSpinner(fmt.Sprintf("Taking screenshot of %s...", c.GetName()), func() error {
+			var captureErr error
+			finalPath, captureErr = c.Screenshot(outputFile)
+			return captureErr
+		})
+		if err != nil {
 			return err
 		}
 
+		PrintSuccess(fmt.Sprintf("Screenshot saved to: %s", finalPath))
+
 		if shouldCopy, _ := cmd.Flags().GetBool("copy"); shouldCopy {
-			if err := copyFileToClipboard(outputFile); err != nil {
-				fmt.Printf("Warning: could not copy to clipboard: %v\n", err)
+			if err := copyFileToClipboard(finalPath); err != nil {
+				PrintInfo(fmt.Sprintf("Warning: could not copy to clipboard: %v", err))
 			} else {
-				fmt.Println("Screenshot copied to clipboard.")
+				PrintSuccess("Screenshot copied to clipboard.")
 			}
 		}
 
