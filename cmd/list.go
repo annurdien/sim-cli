@@ -8,7 +8,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 )
 
@@ -53,15 +52,16 @@ var listCmd = &cobra.Command{
 			return devices[i].Name < devices[j].Name
 		})
 
-		table := tablewriter.NewWriter(os.Stdout)
-		table.Header("Type", "Name", "State", "UDID", "Runtime")
-
+		var rows [][]string
 		for _, device := range devices {
 			runtimeVal := FormatRuntime(device.Runtime)
-			_ = table.Append([]string{device.Type, device.Name, device.State, device.UDID, runtimeVal})
+			platform := FormatPlatform(device.Type)
+			state := FormatState(device.State)
+			rows = append(rows, []string{platform, device.Name, state, device.UDID, runtimeVal})
 		}
 
-		_ = table.Render()
+		headers := []string{"Type", "Name", "State", "UDID", "Runtime"}
+		RenderTable(headers, rows)
 	},
 }
 
