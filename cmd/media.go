@@ -61,7 +61,7 @@ func (s *iOSSimulator) Record(ctx context.Context, outputFile string) error {
 		return fmt.Errorf("failed to start iOS screen recording: %w", err)
 	}
 
-	fmt.Println("Recording started. Press Ctrl+C to stop.")
+	PrintInfo("Recording started. Press Ctrl+C to stop.")
 
 	<-ctx.Done()
 
@@ -77,8 +77,7 @@ func (s *iOSSimulator) Record(ctx context.Context, outputFile string) error {
 	if err != nil && !errors.As(err, &exitErr) {
 		return fmt.Errorf("error during iOS screen recording: %w", err)
 	}
-
-	fmt.Printf("\nRecording saved to: %s\n", fullPath)
+	PrintInfo(fmt.Sprintf("\nRecording saved to: %s", fullPath))
 
 	return nil
 }
@@ -258,7 +257,7 @@ func handleRecording(c capturer, outputFile string, duration, fps, scale int, co
 	defer cancel()
 
 	if duration > 0 {
-		fmt.Printf("Recording for %d seconds...\n", duration)
+		PrintInfo(fmt.Sprintf("Recording for %d seconds...", duration))
 		time.AfterFunc(time.Duration(duration)*time.Second, cancel)
 	}
 
@@ -269,7 +268,7 @@ func handleRecording(c capturer, outputFile string, duration, fps, scale int, co
 
 	go func() {
 		<-sigChan
-		fmt.Println("\nStopping recording...")
+		PrintInfo("\nStopping recording...")
 		cancel()
 	}()
 
@@ -287,16 +286,16 @@ func handleRecording(c capturer, outputFile string, duration, fps, scale int, co
 		finalPath = gifPath
 
 		if err := os.Remove(outputFile); err != nil {
-			fmt.Printf("Warning: could not remove original MP4 file: %v\n", err)
+			PrintInfo(fmt.Sprintf("Warning: could not remove original MP4 file: %v", err))
 		}
 	}
 
 	if shouldCopy {
 		if err := copyFileToClipboard(finalPath); err != nil {
-			fmt.Printf("Warning: could not copy to clipboard: %v\n", err)
+			PrintInfo(fmt.Sprintf("Warning: could not copy to clipboard: %v", err))
 		} else {
 			fileType := strings.ToUpper(strings.TrimPrefix(filepath.Ext(finalPath), "."))
-			fmt.Printf("%s file copied to clipboard.\n", fileType)
+			PrintInfo(fmt.Sprintf("%s file copied to clipboard.", fileType))
 		}
 	}
 

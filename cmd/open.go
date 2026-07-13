@@ -86,14 +86,13 @@ func openIOSUrl(deviceID, url string) (bool, error) {
 		udid = device.UDID
 		name = device.Name
 	}
-
-	fmt.Printf("Opening URL on iOS simulator '%s'...\n", name)
+	PrintInfo(fmt.Sprintf("Opening URL on iOS simulator '%s'...", name))
 
 	if output, err := packageExecutor.Output(CmdXCrun, CmdSimctl, "openurl", udid, url); err != nil {
 		return true, fmt.Errorf("failed to open URL on iOS simulator: %w\nOutput: %s", err, string(output))
 	}
 
-	fmt.Println("URL opened successfully.")
+	PrintInfo("URL opened successfully.")
 
 	return true, nil
 }
@@ -106,15 +105,14 @@ func openAndroidUrl(deviceID, url string) (bool, error) {
 	if udid == "" {
 		return false, nil
 	}
-
-	fmt.Printf("Opening URL on Android emulator '%s'...\n", name)
+	PrintInfo(fmt.Sprintf("Opening URL on Android emulator '%s'...", name))
 	cmdArgs := []string{"-s", udid, "shell", "am", "start", "-a", "android.intent.action.VIEW", "-d", url}
 
 	if output, err := packageExecutor.Output(CmdAdb, cmdArgs...); err != nil {
 		return true, fmt.Errorf("failed to open URL on Android emulator: %w\nOutput: %s", err, string(output))
 	}
 
-	fmt.Println("URL opened successfully.")
+	PrintInfo("URL opened successfully.")
 
 	return true, nil
 }

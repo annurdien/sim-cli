@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -20,7 +19,7 @@ var statusCmd = &cobra.Command{
 		}
 
 		if len(running) == 0 {
-			fmt.Println("No running devices found.")
+			PrintInfo("No running devices found.")
 			return
 		}
 

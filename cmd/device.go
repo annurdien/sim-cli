@@ -176,14 +176,14 @@ var deleteCmd = &cobra.Command{
 		force, _ := cmd.Flags().GetBool("force")
 
 		if !force {
-			fmt.Printf("Are you sure you want to permanently delete %q? This cannot be undone. [y/N]: ", deviceID)
+			PrintInfo(fmt.Sprintf("Are you sure you want to permanently delete %q? This cannot be undone. [y/N]: ", deviceID))
 
 			var confirm string
 
 			_, _ = fmt.Scanln(&confirm)
 
 			if strings.ToLower(strings.TrimSpace(confirm)) != "y" {
-				fmt.Println("Deletion cancelled.")
+				PrintInfo("Deletion cancelled.")
 
 				return nil
 			}
@@ -215,11 +215,11 @@ This performs a factory reset. The device will be shut down if it is running.`,
 		force, _ := cmd.Flags().GetBool("force")
 
 		if !force {
-			fmt.Printf("Are you sure you want to permanently erase %q? This cannot be undone. [y/N]: ", deviceID)
+			PrintInfo(fmt.Sprintf("Are you sure you want to permanently erase %q? This cannot be undone. [y/N]: ", deviceID))
 			var confirm string
 			_, _ = fmt.Scanln(&confirm)
 			if strings.ToLower(strings.TrimSpace(confirm)) != "y" {
-				fmt.Println("Erase cancelled.")
+				PrintInfo("Erase cancelled.")
 				return nil
 			}
 		}
@@ -278,24 +278,23 @@ var lastCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		lastDevice, err := GetLastStartedDevice()
 		if err != nil {
-			fmt.Printf("Error getting last started device: %v\n", err)
+			PrintInfo(fmt.Sprintf("Error getting last started device: %v", err))
 
 			return
 		}
 
 		if lastDevice == nil {
-			fmt.Println("No last started device found. Start a device first.")
+			PrintInfo("No last started device found. Start a device first.")
 
 			return
 		}
-
-		fmt.Printf("Last started device:\n")
-		fmt.Printf("  Name: %s\n", lastDevice.Name)
-		fmt.Printf("  Type: %s\n", lastDevice.Type)
-		fmt.Printf("  UDID: %s\n", lastDevice.UDID)
+		PrintInfo("Last started device:")
+		PrintInfo(fmt.Sprintf("  Name: %s", lastDevice.Name))
+		PrintInfo(fmt.Sprintf("  Type: %s", lastDevice.Type))
+		PrintInfo(fmt.Sprintf("  UDID: %s", lastDevice.UDID))
 
 		if lastDevice.Runtime != "" {
-			fmt.Printf("  Runtime: %s\n", lastDevice.Runtime)
+			PrintInfo(fmt.Sprintf("  Runtime: %s", lastDevice.Runtime))
 		}
 	},
 }
@@ -319,8 +318,7 @@ func startDevice(deviceID string, noWait bool) error {
 		if err != nil || lastDevice == nil {
 			return ErrNoLastDevice
 		}
-
-		fmt.Printf("Starting last device: %s (%s)\n", lastDevice.Name, lastDevice.Type)
+		PrintInfo(fmt.Sprintf("Starting last device: %s (%s)", lastDevice.Name, lastDevice.Type))
 		deviceID = lastDevice.Name
 	}
 
@@ -352,12 +350,12 @@ func startIOSSimulator(deviceID string) (bool, error) {
 	}
 
 	if err := packageExecutor.Run("open", "-a", "Simulator"); err != nil {
-		fmt.Printf("Warning: could not open Simulator app: %v\n", err)
+		PrintInfo(fmt.Sprintf("Warning: could not open Simulator app: %v", err))
 	}
 
 	device.State = StateBooted
 	if err := SaveLastStartedDevice(device); err != nil {
-		fmt.Printf("Warning: could not save last started device: %v\n", err)
+		PrintInfo(fmt.Sprintf("Warning: could not save last started device: %v", err))
 	}
 
 	return true, nil
@@ -398,12 +396,12 @@ func restartIOSSimulator(deviceID string) (bool, error) {
 	}
 
 	if err := packageExecutor.Run("open", "-a", "Simulator"); err != nil {
-		fmt.Printf("Warning: could not open Simulator app: %v\n", err)
+		PrintInfo(fmt.Sprintf("Warning: could not open Simulator app: %v", err))
 	}
 
 	device.State = StateBooted
 	if err := SaveLastStartedDevice(device); err != nil {
-		fmt.Printf("Warning: could not save last started device: %v\n", err)
+		PrintInfo(fmt.Sprintf("Warning: could not save last started device: %v", err))
 	}
 
 	return true, nil
@@ -469,7 +467,7 @@ const androidBootPollInterval = 3 * time.Second
 // Returns (true, nil) on success, (true, err) if found but start failed, (false, nil) if not found.
 func startAndroidEmulator(deviceID string, noWait bool) (bool, error) {
 	if IsAndroidEmulatorRunning(deviceID) {
-		fmt.Printf("Android emulator '%s' is already running\n", deviceID)
+		PrintInfo(fmt.Sprintf("Android emulator '%s' is already running", deviceID))
 
 		udid, name := FindRunningAndroidEmulator(deviceID)
 		device := &Device{
@@ -479,7 +477,7 @@ func startAndroidEmulator(deviceID string, noWait bool) (bool, error) {
 			State: StateBooted,
 		}
 		if err := SaveLastStartedDevice(device); err != nil {
-			fmt.Printf("Warning: could not save last started device: %v\n", err)
+			PrintInfo(fmt.Sprintf("Warning: could not save last started device: %v", err))
 		}
 
 		return true, nil
@@ -503,7 +501,7 @@ func startAndroidEmulator(deviceID string, noWait bool) (bool, error) {
 			State: StateBooted,
 		}
 		if err := SaveLastStartedDevice(device); err != nil {
-			fmt.Printf("Warning: could not save last started device: %v\n", err)
+			PrintInfo(fmt.Sprintf("Warning: could not save last started device: %v", err))
 		}
 
 		return true, nil
@@ -512,9 +510,9 @@ func startAndroidEmulator(deviceID string, noWait bool) (bool, error) {
 	// Wait for the emulator to fully boot and resolve its real UDID.
 	udid, bootErr := waitForAndroidBoot(deviceID)
 	if bootErr != nil {
-		// Non-fatal: emulator may still be booting. Save placeholder and warn.
-		fmt.Printf("Warning: emulator may still be booting: %v\n", bootErr)
-		fmt.Printf("Use 'sim last' to check the saved device once it finishes booting.\n")
+		PrintInfo( // Non-fatal: emulator may still be booting. Save placeholder and warn.
+			fmt.Sprintf("Warning: emulator may still be booting: %v", bootErr))
+		PrintInfo("Use 'sim last' to check the saved device once it finishes booting.")
 		udid = "starting"
 	}
 
@@ -525,7 +523,7 @@ func startAndroidEmulator(deviceID string, noWait bool) (bool, error) {
 		State: StateBooted,
 	}
 	if err := SaveLastStartedDevice(device); err != nil {
-		fmt.Printf("Warning: could not save last started device: %v\n", err)
+		PrintInfo(fmt.Sprintf("Warning: could not save last started device: %v", err))
 	}
 
 	return true, nil
