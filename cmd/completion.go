@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 	"runtime"
 
@@ -55,13 +56,21 @@ PowerShell:
 	Run: func(cmd *cobra.Command, args []string) {
 		switch args[0] {
 		case "bash":
-			_ = cmd.Root().GenBashCompletion(os.Stdout)
+			if err := cmd.Root().GenBashCompletion(os.Stdout); err != nil {
+				PrintError(fmt.Sprintf("Failed to generate bash completion: %v", err))
+			}
 		case "zsh":
-			_ = cmd.Root().GenZshCompletion(os.Stdout)
+			if err := cmd.Root().GenZshCompletion(os.Stdout); err != nil {
+				PrintError(fmt.Sprintf("Failed to generate zsh completion: %v", err))
+			}
 		case "fish":
-			_ = cmd.Root().GenFishCompletion(os.Stdout, true)
+			if err := cmd.Root().GenFishCompletion(os.Stdout, true); err != nil {
+				PrintError(fmt.Sprintf("Failed to generate fish completion: %v", err))
+			}
 		case "powershell":
-			_ = cmd.Root().GenPowerShellCompletionWithDesc(os.Stdout)
+			if err := cmd.Root().GenPowerShellCompletionWithDesc(os.Stdout); err != nil {
+				PrintError(fmt.Sprintf("Failed to generate powershell completion: %v", err))
+			}
 		}
 	},
 }

@@ -45,9 +45,9 @@ Use 'lts' to start the last started device.`,
 
 var stopCmd = &cobra.Command{
 	Use:               "stop [device-name-or-udid]",
-	Aliases:           []string{"st"},
-	Short:             "Stop a running iOS simulator or Android emulator",
-	Long:              `Stop a specific running iOS simulator or Android emulator by name or UDID.`,
+	Aliases:           []string{"st", "shutdown", "sd"},
+	Short:             "Stop/Shutdown a running iOS simulator or Android emulator",
+	Long:              `Stop or shutdown a specific running iOS simulator or Android emulator by name or UDID.`,
 	ValidArgsFunction: validDeviceArgs,
 	Args:              cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -63,31 +63,6 @@ var stopCmd = &cobra.Command{
 		}
 
 		return executeDeviceAction("Stopping", "stopped", deviceID, func(m DeviceManager, id string) (bool, error) {
-			return m.Stop(id)
-		})
-	},
-}
-
-var shutdownCmd = &cobra.Command{
-	Use:               "shutdown [device-name-or-udid]",
-	Aliases:           []string{"sd"},
-	Short:             "Shutdown an iOS simulator or Android emulator",
-	Long:              `Shutdown a specific iOS simulator or Android emulator by name or UDID.`,
-	ValidArgsFunction: validDeviceArgs,
-	Args:              cobra.MaximumNArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		var deviceID string
-		if len(args) == 0 {
-			selected, err := PromptDeviceSelector("booted")
-			if err != nil {
-				return err
-			}
-			deviceID = selected
-		} else {
-			deviceID = args[0]
-		}
-
-		return executeDeviceAction("Shutting down", "shut down", deviceID, func(m DeviceManager, id string) (bool, error) {
 			return m.Stop(id)
 		})
 	},

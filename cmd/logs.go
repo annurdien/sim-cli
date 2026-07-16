@@ -85,12 +85,10 @@ func streamLogs(deviceID, level, filter, app string) error {
 		}
 
 		if filter != "" {
-			// Need to use bash to pipe through grep
-			commandStr := fmt.Sprintf("%s %s | grep --line-buffered '%s'", CmdAdb, strings.Join(args, " "), filter)
-			logCmd = exec.Command("sh", "-c", commandStr)
-		} else {
-			logCmd = exec.Command(CmdAdb, args...)
+			// Filtering is now handled by runLogViewer
+			// to avoid shell injection vulnerabilities with sh -c | grep
 		}
+		logCmd = exec.Command(CmdAdb, args...)
 	} else {
 		// iOS log stream command
 		args := []string{"simctl", "spawn", udid, "log", "stream"}
@@ -104,11 +102,10 @@ func streamLogs(deviceID, level, filter, app string) error {
 		}
 
 		if filter != "" {
-			commandStr := fmt.Sprintf("%s %s | grep --line-buffered '%s'", CmdXCrun, strings.Join(args, " "), filter)
-			logCmd = exec.Command("sh", "-c", commandStr)
-		} else {
-			logCmd = exec.Command(CmdXCrun, args...)
+			// Filtering is now handled by runLogViewer
+			// to avoid shell injection vulnerabilities with sh -c | grep
 		}
+		logCmd = exec.Command(CmdXCrun, args...)
 	}
 
 	stdout, err := logCmd.StdoutPipe()
@@ -121,7 +118,7 @@ func streamLogs(deviceID, level, filter, app string) error {
 		return fmt.Errorf("failed to start log stream: %w", err)
 	}
 
-	err = runLogViewer(stdout)
+	err = runLogViewer(stdout, filter)
 
 	// Ensure the log command is killed when bubbletea exits
 	if logCmd.Process != nil {

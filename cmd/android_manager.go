@@ -15,7 +15,7 @@ const androidBootPollInterval = 3 * time.Second
 type AndroidManager struct{}
 
 func (m *AndroidManager) Name() string {
-	return "Android"
+	return NameAndroid
 }
 
 func (m *AndroidManager) List() ([]Device, error) {
@@ -128,7 +128,9 @@ func (m *AndroidManager) Restart(deviceID string) (bool, error) {
 		return false, nil
 	}
 
-	_, _ = m.Stop(deviceID)
+	if _, err := m.Stop(deviceID); err != nil {
+		PrintInfo(fmt.Sprintf("Warning: failed to stop device before restart: %v", err))
+	}
 
 	return m.Start(deviceID, false)
 }
@@ -138,7 +140,9 @@ func (m *AndroidManager) Delete(deviceID string) (bool, error) {
 		return false, nil
 	}
 
-	_, _ = m.Stop(deviceID)
+	if _, err := m.Stop(deviceID); err != nil {
+		PrintInfo(fmt.Sprintf("Warning: failed to stop device before delete: %v", err))
+	}
 
 	if err := packageExecutor.Run(CmdAvdManager, "delete", "avd", "-n", deviceID); err != nil {
 		return true, fmt.Errorf("failed to delete Android emulator '%s': %w", deviceID, err)
@@ -152,7 +156,9 @@ func (m *AndroidManager) Erase(deviceID string) (bool, error) {
 		return false, nil
 	}
 
-	_, _ = m.Stop(deviceID)
+	if _, err := m.Stop(deviceID); err != nil {
+		PrintInfo(fmt.Sprintf("Warning: failed to stop device before erase: %v", err))
+	}
 
 	_, err := packageExecutor.Start(CmdEmulator, "-avd", deviceID, "-wipe-data")
 	if err != nil {

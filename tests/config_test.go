@@ -11,7 +11,10 @@ import (
 func TestGetConfigDir(t *testing.T) {
 	_ = NewTestHelpers(t) // sets up temp HOME via t.Setenv
 
-	configDir := cmd.GetConfigDir()
+	configDir, err := cmd.GetConfigDir()
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
 	if configDir == "" {
 		t.Error("Config directory should not be empty")
 	}
@@ -20,7 +23,10 @@ func TestGetConfigDir(t *testing.T) {
 func TestGetConfigPath(t *testing.T) {
 	_ = NewTestHelpers(t)
 
-	configPath := cmd.GetConfigPath()
+	configPath, err := cmd.GetConfigPath()
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
 	if configPath == "" {
 		t.Error("Config path should not be empty")
 	}
@@ -143,7 +149,11 @@ func TestConfigFilePermissions(t *testing.T) {
 		t.Fatalf("Failed to save device: %v", err)
 	}
 
-	info, err := os.Stat(cmd.GetConfigPath())
+	path, err := cmd.GetConfigPath()
+	if err != nil {
+		t.Fatalf("Failed to get config path: %v", err)
+	}
+	info, err := os.Stat(path)
 	if err != nil {
 		t.Fatalf("Failed to stat config file: %v", err)
 	}

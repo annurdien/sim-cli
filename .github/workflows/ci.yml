@@ -43,7 +43,7 @@ jobs:
         args: --timeout=5m
 
     - name: Run tests with race detection
-      run: go test -race ./tests/
+      run: go test -race ./...
 
     - name: Build application
       run: make build

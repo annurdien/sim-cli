@@ -1,9 +1,11 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -83,16 +85,25 @@ var copyFromCmd = &cobra.Command{
 			remotePath = args[0]
 			localPath = "."
 		case 2:
-			// If it matches a device, arg0 is device, arg1 is remote. Else arg0 is remote, arg1 is local.
-			// Try to find device with arg0
-			_, _, _, err := FindRunningDevice(args[0])
-			if err == nil {
-				deviceID = args[0]
-				remotePath = args[1]
-				localPath = "."
-			} else {
+			if strings.Contains(args[0], "/") || strings.Contains(args[0], "\\") {
+				// arg0 looks like a path (remote or local), so arg0=remote, arg1=local
 				remotePath = args[0]
 				localPath = args[1]
+			} else {
+				// arg0 might be a device
+				_, _, _, err := FindRunningDevice(args[0])
+				if err == nil {
+					deviceID = args[0]
+					remotePath = args[1]
+					localPath = "."
+				} else if !errors.Is(err, ErrDeviceNotRunning) && !errors.Is(err, ErrDeviceNotFound) && !errors.Is(err, ErrNoActiveDevice) {
+					// Transient error during device lookup
+					return err
+				} else {
+					// Fallback to path
+					remotePath = args[0]
+					localPath = args[1]
+				}
 			}
 		case 3:
 			deviceID = args[0]

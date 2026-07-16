@@ -20,7 +20,7 @@ type logViewerModel struct {
 	paused   bool
 }
 
-func runLogViewer(stdout io.ReadCloser) error {
+func runLogViewer(stdout io.ReadCloser, filter string) error {
 	m := logViewerModel{
 		lines: []string{},
 	}
@@ -29,7 +29,11 @@ func runLogViewer(stdout io.ReadCloser) error {
 	go func() {
 		scanner := bufio.NewScanner(stdout)
 		for scanner.Scan() {
-			p.Send(logMsg(scanner.Text()))
+			line := scanner.Text()
+			if filter != "" && !strings.Contains(line, filter) {
+				continue
+			}
+			p.Send(logMsg(line))
 		}
 	}()
 

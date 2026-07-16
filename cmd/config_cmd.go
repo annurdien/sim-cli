@@ -110,7 +110,11 @@ var configPathCmd = &cobra.Command{
 	Use:   "path",
 	Short: "Print the path to the configuration file",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		PrintInfo(GetConfigPath())
+		path, err := GetConfigPath()
+		if err != nil {
+			return err
+		}
+		PrintInfo(path)
 
 		return nil
 	},
