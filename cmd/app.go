@@ -60,12 +60,13 @@ If no device is specified, the first booted device is used automatically.`,
 func findDeviceForAppInstall(deviceID, ext string) (udid, name string, isAndroid bool, err error) {
 	switch ext {
 	case ExtAPK:
-		u, n, isA, err := FindRunningDevice(deviceID)
-		if err != nil {
-			return "", "", true, err
-		}
-		if !isA {
-			return "", "", true, ErrAndroidEmulatorNotRunning
+		u, n := FindRunningAndroidEmulator(deviceID)
+		if u == "" {
+			if deviceID == "" {
+				return "", "", true, ErrAndroidEmulatorNotRunning
+			}
+
+			return "", "", true, fmt.Errorf("device %q: %w", deviceID, ErrAndroidEmulatorNotRunning)
 		}
 
 		return u, n, true, nil

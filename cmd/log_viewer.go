@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/viewport"
@@ -21,6 +22,14 @@ type logViewerModel struct {
 }
 
 func runLogViewer(stdout io.ReadCloser, filter string) error {
+	var re *regexp.Regexp
+	if filter != "" {
+		var err error
+		if re, err = regexp.Compile(filter); err != nil {
+			return fmt.Errorf("invalid filter pattern: %w", err)
+		}
+	}
+
 	m := logViewerModel{
 		lines: []string{},
 	}
@@ -30,7 +39,7 @@ func runLogViewer(stdout io.ReadCloser, filter string) error {
 		scanner := bufio.NewScanner(stdout)
 		for scanner.Scan() {
 			line := scanner.Text()
-			if filter != "" && !strings.Contains(line, filter) {
+			if re != nil && !re.MatchString(line) {
 				continue
 			}
 			p.Send(logMsg(line))

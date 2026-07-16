@@ -3,6 +3,7 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"runtime"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -178,6 +179,10 @@ var cloneCmd = &cobra.Command{
 	ValidArgsFunction: validDeviceAndFileArgs,
 	Args:              cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if runtime.GOOS != DarwinOS {
+			return ErrIOSMacOnly
+		}
+
 		sourceDevice := args[0]
 		newName := args[1]
 
