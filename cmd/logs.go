@@ -45,7 +45,6 @@ func init() {
 	logsCmd.Flags().StringVarP(&logApp, "app", "a", "", "Filter by app bundle ID (iOS) or package name (Android)")
 }
 
-//nolint:gocyclo,cyclop
 func streamLogs(deviceID, level, filter, app string) error {
 	udid, name, isAndroid, err := FindRunningDevice(deviceID)
 	if err != nil {
@@ -84,10 +83,8 @@ func streamLogs(deviceID, level, filter, app string) error {
 			}
 		}
 
-		if filter != "" {
-			// Filtering is now handled by runLogViewer
-			// to avoid shell injection vulnerabilities with sh -c | grep
-		}
+		// Filtering is now handled by runLogViewer
+		// to avoid shell injection vulnerabilities with sh -c | grep
 		logCmd = exec.Command(CmdAdb, args...)
 	} else {
 		// iOS log stream command
@@ -101,10 +98,8 @@ func streamLogs(deviceID, level, filter, app string) error {
 			args = append(args, "--predicate", fmt.Sprintf("subsystem == \"%s\"", app))
 		}
 
-		if filter != "" {
-			// Filtering is now handled by runLogViewer
-			// to avoid shell injection vulnerabilities with sh -c | grep
-		}
+		// Filtering is now handled by runLogViewer
+		// to avoid shell injection vulnerabilities with sh -c | grep
 		logCmd = exec.Command(CmdXCrun, args...)
 	}
 

@@ -1,3 +1,4 @@
+//nolint:testpackage
 package cmd
 
 import (
@@ -25,14 +26,18 @@ func (m *mockBenchmarkExecutor) Output(name string, args ...string) ([]byte, err
 			if args[2] == "emulator-5554" {
 				return []byte("Pixel_8_API_34\nOK\n"), nil
 			}
+
 			return []byte("Unknown_AVD\nOK\n"), nil
 		}
 	}
+
 	return nil, nil
 }
 
 func (m *mockBenchmarkExecutor) Run(name string, args ...string) error { return nil }
-func (m *mockBenchmarkExecutor) Start(name string, args ...string) (*exec.Cmd, error) { return nil, nil }
+func (m *mockBenchmarkExecutor) Start(name string, args ...string) (*exec.Cmd, error) {
+	return nil, nil
+}
 
 var benchmarkIOSOutput = []byte(`{
   "devices" : {

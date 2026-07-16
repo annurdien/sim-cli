@@ -33,6 +33,7 @@ func GetConfigPath() (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	return filepath.Join(dir, "config.json"), nil
 }
 
