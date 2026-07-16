@@ -189,7 +189,7 @@ func CreateAndroidDevice(name, deviceType, runtimeID string) error {
 	}
 
 	// avdmanager prompts for custom hardware profile. We pipe "no\n" to it.
-	cmd := exec.Command("avdmanager", args...)
+	cmd := exec.Command(CmdAvdManager, args...)
 	cmd.Stdin = strings.NewReader("no\n")
 
 	if err := cmd.Run(); err != nil {
