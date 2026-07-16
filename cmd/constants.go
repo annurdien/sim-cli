@@ -4,6 +4,7 @@ const (
 	DarwinOS            = "darwin"
 	StateBooted         = "Booted"
 	StateShutdown       = "Shutdown"
+	StateOffline        = "Offline"
 	TypeIOSSimulator    = "iOS Simulator"
 	TypeAndroidEmulator = "Android Emulator"
 	PlatformIOS         = "ios"

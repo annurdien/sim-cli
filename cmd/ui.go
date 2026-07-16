@@ -82,7 +82,7 @@ func FormatState(state string) string {
 	}
 
 	if state == "offline" {
-		state = StateShutdown
+		state = StateOffline
 	}
 
 	return StyleShutdown.Render(state)
