@@ -290,7 +290,7 @@ func runCreateWizard() error {
 		Title("Select Platform").
 		Options(
 			huh.NewOption("iOS Simulator", PlatformIOS),
-			huh.NewOption("Android Emulator", "android"),
+			huh.NewOption("Android Emulator", PlatformAndroid),
 		).
 		Value(&platform).
 		Run()

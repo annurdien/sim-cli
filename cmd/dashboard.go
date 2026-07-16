@@ -107,8 +107,8 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.loading = true
 				m.msg = "Stopping " + row[1] + "..."
 				cmds = append(cmds, doActionCmd(func() error {
-					for _, m := range GetManagers() {
-						found, err := m.Stop(deviceID)
+					for _, mgr := range GetManagers() {
+						found, err := mgr.Stop(deviceID)
 						if err != nil {
 							return err
 						}
