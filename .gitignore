@@ -41,4 +41,5 @@ recording_*.mp4
 *.png
 
 # Temporary files
-/tmp/
+/tmp/coverage.out
+coverage.html

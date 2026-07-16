@@ -189,8 +189,8 @@ func CreateAndroidDevice(name, deviceType, runtimeID string) error {
 	}
 
 	// avdmanager prompts for custom hardware profile. We pipe "no\n" to it.
-	commandStr := fmt.Sprintf("echo 'no' | avdmanager %s", strings.Join(args, " "))
-	cmd := exec.Command("sh", "-c", commandStr)
+	cmd := exec.Command("avdmanager", args...)
+	cmd.Stdin = strings.NewReader("no\n")
 
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to create Android emulator: %w", err)
@@ -289,7 +289,7 @@ func runCreateWizard() error {
 	err := huh.NewSelect[string]().
 		Title("Select Platform").
 		Options(
-			huh.NewOption("iOS Simulator", "ios"),
+			huh.NewOption("iOS Simulator", PlatformIOS),
 			huh.NewOption("Android Emulator", "android"),
 		).
 		Value(&platform).
@@ -302,12 +302,26 @@ func runCreateWizard() error {
 	var deviceTypes []string
 
 	err = RunSpinner("Fetching available runtimes and types...", func() error {
-		if platform == "ios" {
-			runtimes, _ = fetchIOSRuntimes()
-			deviceTypes, _ = fetchIOSDeviceTypes()
+		if platform == PlatformIOS {
+			var err1, err2 error
+			runtimes, err1 = fetchIOSRuntimes()
+			if err1 != nil {
+				return err1
+			}
+			deviceTypes, err2 = fetchIOSDeviceTypes()
+			if err2 != nil {
+				return err2
+			}
 		} else {
-			runtimes, _ = fetchAndroidSystemImages()
-			deviceTypes, _ = fetchAndroidDeviceTypes()
+			var err1, err2 error
+			runtimes, err1 = fetchAndroidSystemImages()
+			if err1 != nil {
+				return err1
+			}
+			deviceTypes, err2 = fetchAndroidDeviceTypes()
+			if err2 != nil {
+				return err2
+			}
 		}
 
 		return nil
@@ -365,7 +379,7 @@ func runCreateWizard() error {
 		return err
 	}
 
-	if platform == "ios" {
+	if platform == PlatformIOS {
 		createIOS = true
 	} else {
 		createAndroid = true

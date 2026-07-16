@@ -73,16 +73,16 @@ func ApplyTheme(theme string) {
 
 // FormatState returns a styled string for device state.
 func FormatState(state string) string {
-	if state == StateBooted || state == "Booted" || state == "device" {
+	if state == StateBooted || state == "device" {
 		if state == "device" {
-			state = "Booted" // Normalize Android 'device' to 'Booted'
+			state = StateBooted // Normalize Android 'device' to 'Booted'
 		}
 
 		return StyleBooted.Render(state)
 	}
 
 	if state == "offline" {
-		state = "Offline"
+		state = StateShutdown
 	}
 
 	return StyleShutdown.Render(state)
@@ -90,10 +90,10 @@ func FormatState(state string) string {
 
 // FormatPlatform returns a styled string for platform type.
 func FormatPlatform(platform string) string {
-	if platform == TypeIOSSimulator || platform == "iOS" {
+	if platform == TypeIOSSimulator || platform == NameIOS {
 		return StyleIOS.Render(platform)
 	}
-	if platform == TypeAndroidEmulator || platform == "Android" {
+	if platform == TypeAndroidEmulator || platform == NameAndroid {
 		return StyleAndroid.Render(platform)
 	}
 

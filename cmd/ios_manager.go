@@ -7,7 +7,7 @@ import (
 type IOSManager struct{}
 
 func (m *IOSManager) Name() string {
-	return "iOS"
+	return NameIOS
 }
 
 func (m *IOSManager) List() ([]Device, error) {
@@ -55,7 +55,9 @@ func (m *IOSManager) Restart(deviceID string) (bool, error) {
 		return false, nil
 	}
 
-	_ = packageExecutor.Run(CmdXCrun, CmdSimctl, "shutdown", device.UDID) // Ignore error if already shut down.
+	if err := packageExecutor.Run(CmdXCrun, CmdSimctl, "shutdown", device.UDID); err != nil {
+		PrintInfo(fmt.Sprintf("Warning: failed to shut down device before restart: %v", err))
+	}
 
 	if err := packageExecutor.Run(CmdXCrun, CmdSimctl, "boot", device.UDID); err != nil {
 		return true, fmt.Errorf("failed to boot iOS simulator '%s' during restart: %w", deviceID, err)
@@ -79,7 +81,9 @@ func (m *IOSManager) Delete(deviceID string) (bool, error) {
 		return false, nil
 	}
 
-	_ = packageExecutor.Run(CmdXCrun, CmdSimctl, "shutdown", device.UDID)
+	if err := packageExecutor.Run(CmdXCrun, CmdSimctl, "shutdown", device.UDID); err != nil {
+		PrintInfo(fmt.Sprintf("Warning: failed to shut down device before delete: %v", err))
+	}
 
 	if err := packageExecutor.Run(CmdXCrun, CmdSimctl, "delete", device.UDID); err != nil {
 		return true, fmt.Errorf("failed to delete iOS simulator '%s': %w", deviceID, err)
@@ -94,7 +98,9 @@ func (m *IOSManager) Erase(deviceID string) (bool, error) {
 		return false, nil
 	}
 
-	_ = packageExecutor.Run(CmdXCrun, CmdSimctl, "shutdown", device.UDID)
+	if err := packageExecutor.Run(CmdXCrun, CmdSimctl, "shutdown", device.UDID); err != nil {
+		PrintInfo(fmt.Sprintf("Warning: failed to shut down device before erase: %v", err))
+	}
 
 	if err := packageExecutor.Run(CmdXCrun, CmdSimctl, "erase", device.UDID); err != nil {
 		return true, fmt.Errorf("failed to erase iOS simulator '%s': %w", deviceID, err)

@@ -8,6 +8,8 @@ const (
 	TypeAndroidEmulator = "Android Emulator"
 	PlatformIOS         = "ios"
 	PlatformAndroid     = "android"
+	NameIOS             = "iOS"
+	NameAndroid         = "Android"
 	ExtPNG              = ".png"
 	ExtMP4              = ".mp4"
 	ExtGIF              = ".gif"

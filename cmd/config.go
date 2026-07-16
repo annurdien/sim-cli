@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 )
@@ -17,25 +18,36 @@ type Config struct {
 }
 
 // GetConfigDir returns the path to the sim-cli configuration directory.
-func GetConfigDir() string {
+func GetConfigDir() (string, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return os.TempDir()
+		return "", fmt.Errorf("could not determine user home directory: %w", err)
 	}
 
-	return filepath.Join(homeDir, ".sim-cli")
+	return filepath.Join(homeDir, ".sim-cli"), nil
 }
 
 // GetConfigPath returns the full path to the configuration file.
-func GetConfigPath() string {
-	return filepath.Join(GetConfigDir(), "config.json")
+func GetConfigPath() (string, error) {
+	dir, err := GetConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "config.json"), nil
 }
 
-// LoadConfig reads and returns the current application configuration.
 func LoadConfig() (*Config, error) {
-	configPath := GetConfigPath()
+	configPath, err := GetConfigPath()
+	if err != nil {
+		return &Config{}, err
+	}
 
-	if err := os.MkdirAll(GetConfigDir(), 0o755); err != nil {
+	configDir, err := GetConfigDir()
+	if err != nil {
+		return &Config{}, err
+	}
+
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		return &Config{}, err
 	}
 
@@ -56,11 +68,18 @@ func LoadConfig() (*Config, error) {
 	return &config, nil
 }
 
-// SaveConfig writes the given configuration to disk with secure permissions.
 func SaveConfig(config *Config) error {
-	configPath := GetConfigPath()
+	configPath, err := GetConfigPath()
+	if err != nil {
+		return err
+	}
 
-	if err := os.MkdirAll(GetConfigDir(), 0o755); err != nil {
+	configDir, err := GetConfigDir()
+	if err != nil {
+		return err
+	}
+
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		return err
 	}
 

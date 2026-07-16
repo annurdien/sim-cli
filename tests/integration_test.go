@@ -150,7 +150,10 @@ func TestIntegration_ErrorHandling(t *testing.T) {
 	h := NewTestHelpers(t)
 
 	// Verify config dir is accessible under temp HOME.
-	configDir := cmd.GetConfigDir()
+	configDir, err := cmd.GetConfigDir()
+	if err != nil {
+		t.Fatalf("Failed to get config dir: %v", err)
+	}
 	if configDir == "" {
 		t.Error("Config directory should not be empty")
 	}
@@ -167,12 +170,15 @@ func TestIntegration_ErrorHandling(t *testing.T) {
 	}
 
 	// Corrupted config should return an error.
-	configPath := cmd.GetConfigPath()
+	configPath, err := cmd.GetConfigPath()
+	if err != nil {
+		t.Fatalf("Failed to get config path: %v", err)
+	}
 	if err := os.WriteFile(configPath, []byte("invalid json"), 0o644); err != nil {
 		t.Fatalf("Failed to write invalid config: %v", err)
 	}
 
-	_, err := cmd.LoadConfig()
+	_, err = cmd.LoadConfig()
 	if err == nil {
 		t.Error("Expected error when loading corrupted config")
 	}
@@ -305,7 +311,11 @@ func TestSecurity_ConfigFilePermissions(t *testing.T) {
 		t.Fatalf("Failed to save device: %v", err)
 	}
 
-	info, err := os.Stat(cmd.GetConfigPath())
+	configPath, err := cmd.GetConfigPath()
+	if err != nil {
+		t.Fatalf("Failed to get config path: %v", err)
+	}
+	info, err := os.Stat(configPath)
 	if err != nil {
 		t.Fatalf("Failed to stat config file: %v", err)
 	}
@@ -323,7 +333,11 @@ func TestSecurity_ConfigDirectory(t *testing.T) {
 		t.Fatalf("Failed to save device: %v", err)
 	}
 
-	info, err := os.Stat(cmd.GetConfigDir())
+	configDir, err := cmd.GetConfigDir()
+	if err != nil {
+		t.Fatalf("Failed to get config dir: %v", err)
+	}
+	info, err := os.Stat(configDir)
 	if err != nil {
 		t.Fatalf("Failed to stat config directory: %v", err)
 	}

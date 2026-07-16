@@ -59,7 +59,7 @@ func FindRunningDevice(deviceID string) (udid, name string, isAndroid bool, err 
 			return "", "", false, err
 		}
 		if found {
-			return u, n, m.Name() == "Android", nil
+			return u, n, m.Name() == NameAndroid, nil
 		}
 	}
 	if deviceID == "" {
