@@ -138,8 +138,7 @@ sim last
 | `doctor` | - | Check all system dependencies (Xcode, Android SDK, ffmpeg). |
 | `list` | `l`, `ls` | List all available simulators and emulators. |
 | `start <device>` | `s` | Start a simulator or emulator by name or UDID. |
-| `stop <device>` | `st` | Stop a running simulator or emulator. |
-| `shutdown <device>` | `sd` | Shutdown a simulator or emulator. |
+| `stop <device>` | `st`, `sd`, `shutdown` | Stop or shutdown a running simulator or emulator. |
 | `restart <device>` | `r` | Restart a simulator or emulator. |
 | `delete <device>` | `d`, `del` | **Permanently** delete a simulator or emulator. |
 | `erase <device>` | `reset` | Factory reset a device, wiping its data. |
