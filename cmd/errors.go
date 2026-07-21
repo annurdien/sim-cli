@@ -33,4 +33,8 @@ var (
 	ErrIOSMacOnly = errors.New("iOS operations are only supported on macOS")
 	// ErrAndroidCloneNotSupported is returned when attempting to clone an Android emulator.
 	ErrAndroidCloneNotSupported = errors.New("cloning not supported for Android emulators")
+	// ErrNoAppsInstalled is returned when no (non-system) apps are found on the simulator.
+	ErrNoAppsInstalled = errors.New("no apps installed on this simulator")
+	// ErrDefaultsNotFound is returned when no UserDefaults plist file exists for an app.
+	ErrDefaultsNotFound = errors.New("no UserDefaults plist found for this app")
 )

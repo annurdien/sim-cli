@@ -25,6 +25,7 @@ const (
 	CmdFFmpeg           = "ffmpeg"
 	CmdOsaScript        = "osascript"
 	CmdXclip            = "xclip"
+	CmdPlutil           = "plutil"
 	PrefixScreenshot    = "screenshot"
 	PrefixRecording     = "recording"
 )

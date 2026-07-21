@@ -3,7 +3,6 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"runtime"
 	"sort"
 	"strings"
@@ -132,9 +131,7 @@ func GetAndroidEmulators() []Device {
 func GetAvailableAVDs() map[string]bool {
 	avdOutput, err := packageExecutor.Output(CmdEmulator, "-list-avds")
 	if err != nil {
-		// Emulator may not be in PATH; only running devices will be listed.
-		fmt.Fprintf(os.Stderr, "Warning: could not run 'emulator -list-avds': %v. Only running emulators will be listed.\n", err)
-
+		// Emulator may not be in PATH; silently fall back to only listing running devices.
 		return make(map[string]bool)
 	}
 
