@@ -43,3 +43,16 @@ recording_*.mp4
 # Temporary files
 /tmp/coverage.out
 coverage.html
+
+# MiniSimCam
+MiniSimCam/.build/
+MiniSimCam/Example/CameraPreviewApp/build/
+MiniSimCam/Example/CameraPreviewApp/module_cache/
+MiniSimCam/module_cache/
+module_cache/
+
+# Xcode user state files (never commit)
+**/*.xcuserstate
+
+# User Scratch
+scratch/
