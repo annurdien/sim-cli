@@ -25,6 +25,15 @@ clean:
 	rm -rf dist/
 	rm -f coverage.out coverage.html
 
+# Build MiniSimCam (FrameHost + MiniCamInject dylib)
+cam-build:
+	cd MiniSimCam && ./Scripts/build.sh
+
+# Clean MiniSimCam build artifacts
+cam-clean:
+	cd MiniSimCam && swift package clean
+	rm -rf MiniSimCam/.build/injector
+
 # Install dependencies
 deps:
 	go mod download
@@ -79,4 +88,6 @@ help:
 	@echo "  vet           - Run go vet"
 	@echo "  check         - Run all checks (fmt, vet, lint, test-race)"
 	@echo "  install       - Install to /usr/local/bin"
+	@echo "  cam-build     - Build MiniSimCam (FrameHost + injector dylib)"
+	@echo "  cam-clean     - Clean MiniSimCam build artifacts"
 	@echo "  help          - Show this help"

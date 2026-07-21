@@ -171,6 +171,7 @@ func init() {
 	rootCmd.AddCommand(pairCmd)
 	rootCmd.AddCommand(openCmd)
 	rootCmd.AddCommand(doctorCmd)
+	rootCmd.AddCommand(camCmd)
 
 	// deleteCmd flags
 	deleteCmd.Flags().BoolP("force", "f", false, "Skip confirmation prompt")

@@ -27,4 +27,9 @@ const (
 	CmdXclip            = "xclip"
 	PrefixScreenshot    = "screenshot"
 	PrefixRecording     = "recording"
+
+	// Camera injector (MiniSimCam) defaults.
+	DefaultCamWidth  = 1280
+	DefaultCamHeight = 720
+	DefaultCamFPS    = 30
 )
