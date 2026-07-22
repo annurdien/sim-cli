@@ -552,12 +552,36 @@ var camStopCmd = &cobra.Command{
 	},
 }
 
+func setGlobalSimEnv(udid string, fps int) {
+	if udid == "" {
+		return
+	}
+	mscDir := miniSimCamDir()
+	dylib := injectorDylib(mscDir)
+	shm := shmPath(udid)
+	
+	_ = exec.Command("xcrun", "simctl", "spawn", udid, "launchctl", "setenv", "DYLD_INSERT_LIBRARIES", dylib).Run()
+	_ = exec.Command("xcrun", "simctl", "spawn", udid, "launchctl", "setenv", "MINISIMCAM_PATH", shm).Run()
+	_ = exec.Command("xcrun", "simctl", "spawn", udid, "launchctl", "setenv", "MINISIMCAM_FPS", strconv.Itoa(fps)).Run()
+}
+
+func unsetGlobalSimEnv(udid string) {
+	if udid == "" {
+		return
+	}
+	_ = exec.Command("xcrun", "simctl", "spawn", udid, "launchctl", "unsetenv", "DYLD_INSERT_LIBRARIES").Run()
+	_ = exec.Command("xcrun", "simctl", "spawn", udid, "launchctl", "unsetenv", "MINISIMCAM_PATH").Run()
+	_ = exec.Command("xcrun", "simctl", "spawn", udid, "launchctl", "unsetenv", "MINISIMCAM_FPS").Run()
+}
+
 // stopFrameHost scans all running processes and terminates ALL FrameHost processes
 // associated with the target UDID immediately.
 func stopFrameHost(udid string) error {
 	pidPath := pidFilePath(udid)
 	statusPath := statusFilePath(udid)
 	shm := shmPath(udid)
+
+	unsetGlobalSimEnv(udid)
 
 	defer func() {
 		_ = os.Remove(pidPath)

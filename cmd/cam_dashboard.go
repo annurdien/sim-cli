@@ -682,6 +682,8 @@ func startCameraForDevice(udid string, useCamera bool, imagePath string, cameraI
 	if err := c.Start(); err != nil {
 		return err
 	}
+	
+	setGlobalSimEnv(udid, DefaultCamFPS)
 
 	return waitForFrameHostReady(c, statusFilePath(udid))
 }
