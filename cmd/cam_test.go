@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -61,6 +62,24 @@ func TestCamStatusParsing(t *testing.T) {
 	}
 	if !parsed.Running {
 		t.Error("Running should be true")
+	}
+}
+
+func TestFrameHostFPS(t *testing.T) {
+	udid := "frame-host-fps-test"
+	path := statusFilePath(udid)
+	t.Cleanup(func() { _ = os.Remove(path) })
+
+	status := camFrameLoopStatus{FPS: 60}
+	data, err := json.Marshal(status)
+	if err != nil {
+		t.Fatalf("marshal status: %v", err)
+	}
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatalf("write status: %v", err)
+	}
+	if got := frameHostFPS(udid); got != 60 {
+		t.Errorf("frameHostFPS() = %d, want 60", got)
 	}
 }
 

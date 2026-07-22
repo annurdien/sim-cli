@@ -114,13 +114,15 @@
         return nil;
     }
 
-    // Single copy: shm → CVPixelBuffer (no intermediate vector).
+    // Single pass: shm → CVPixelBuffer (no intermediate vector). The
+    // reader copies per row because its stream stride can differ from the
+    // pixel buffer pool's stride.
     CVPixelBufferLockBaseAddress(pixBuf, 0);
     void *dst       = CVPixelBufferGetBaseAddress(pixBuf);
     size_t dstBPR   = CVPixelBufferGetBytesPerRow(pixBuf);
     size_t dstTotal = dstBPR * h;
 
-    FrameInfo info = reader->copyLatestFrameInto(dst, dstTotal);
+    FrameInfo info = reader->copyLatestFrameInto(dst, dstBPR, dstTotal);
     CVPixelBufferUnlockBaseAddress(pixBuf, 0);
 
     if (!info.valid) {
