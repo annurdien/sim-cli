@@ -143,4 +143,20 @@ enum CameraDiscovery {
         print("└\(border)┘")
         print("\nUse: sim cam start --camera --camera-id \"<Name or UniqueID>\"")
     }
+
+    /// Prints a JSON array of all discovered cameras to stdout.
+    static func printJSON() {
+        let all = allDevices()
+        let mapped = all.map { [
+            "uniqueID": $0.uniqueID,
+            "localizedName": $0.localizedName,
+            "typeLabel": $0.typeLabel
+        ] }
+        if let data = try? JSONSerialization.data(withJSONObject: mapped, options: .prettyPrinted),
+           let jsonString = String(data: data, encoding: .utf8) {
+            print(jsonString)
+        } else {
+            print("[]")
+        }
+    }
 }

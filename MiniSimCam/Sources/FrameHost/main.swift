@@ -36,6 +36,9 @@ struct FrameHostCommand: ParsableCommand {
     @Flag(name: .long, help: "List all available cameras and exit. Does not require --udid.")
     var listCameras: Bool = false
 
+    @Flag(name: .long, help: "Output camera list as JSON (use with --list-cameras).")
+    var json: Bool = false
+
     @Option(name: .long, help: "Output frame width in pixels.")
     var width: Int = 1280
 
@@ -75,7 +78,11 @@ struct FrameHostCommand: ParsableCommand {
     func run() throws {
         // Handle --list-cameras first — no UDID, shared memory, or frame loop needed.
         if listCameras {
-            CameraDiscovery.printTable()
+            if json {
+                CameraDiscovery.printJSON()
+            } else {
+                CameraDiscovery.printTable()
+            }
             return
         }
 

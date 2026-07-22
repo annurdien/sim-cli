@@ -2,9 +2,11 @@ package cmd
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // TestCamShmPaths verifies that shmPath / statusFilePath / pidFilePath produce
@@ -66,8 +68,8 @@ func TestCamStatusParsing(t *testing.T) {
 }
 
 func TestFrameHostFPS(t *testing.T) {
-	udid := "frame-host-fps-test"
-	path := statusFilePath(udid)
+	udid := fmt.Sprintf("frame-host-fps-test-%d", time.Now().UnixNano())
+	path := filepath.Join(os.TempDir(), fmt.Sprintf("minisimcam.%s.status", udid))
 	t.Cleanup(func() { _ = os.Remove(path) })
 
 	status := camFrameLoopStatus{FPS: 60}
