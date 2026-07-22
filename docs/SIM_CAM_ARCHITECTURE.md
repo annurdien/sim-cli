@@ -243,8 +243,7 @@ sequenceDiagram
     end
     
     NewHost->>SHM: Resume writing frames
-    Note over SHM, App: App polling never stopped
-    SHM->>App: App reads new frames instantly
+    Note over SHM, App: If reused, App sees new frames instantly.<br>If deleted, App is frozen on old inode.
     deactivate NewHost
 ```
 
@@ -254,4 +253,60 @@ When the active camera is changed:
 3. The shared memory `.frames` file on disk is kept intact unless the requested resolution changes.
 4. The new `FrameHost` uses `fstat` to verify the file size. If it matches, it memory maps the existing file instead of recreating it.
 5. If the previous `FrameHost` was killed mid-write (leaving `sequence` as an odd number), the new `FrameHost` detects this and forces the atomic `sequence` back to an even number to repair the lock state.
-6. The iOS app, which is polling the memory map continuously, sees the `sequence` advance and resumes rendering new frames.
+6. **If the resolution matched (file reused):** The iOS app, which polls the memory map continuously, sees the `sequence` advance and resumes rendering new frames instantly without a restart.
+7. **If the resolution changed (file recreated):** The old file is deleted from disk, but the iOS app still holds the old inode in memory (`mmap`). The app's camera feed will freeze because the old sequence lock never advances. The user must restart the iOS app to map the new file.
+
+---
+
+## 5. Future Architectural Improvements
+
+The current architecture is highly functional, but several advanced improvements could be implemented to elevate performance and provide a completely seamless "magic" experience.
+
+```mermaid
+flowchart TD
+    subgraph Host["macOS Host"]
+        subgraph FrameHost["FrameHost (Next-Gen)"]
+            CameraSource["CameraSource"]
+            IOSurfaceWriter["IOSurface Writer"]
+            ControlReader["Control Message Reader"]
+        end
+        
+        SHM[/"Shared Memory (Header & Control)"/]
+        GPU[/"GPU Memory (IOSurface)"/]
+    end
+
+    subgraph Sim["iOS Simulator"]
+        subgraph App["Target iOS App"]
+            subgraph Injector["MiniCamInject.dylib"]
+                VNODE["VNODE File Monitor"]
+                IOSurfaceReader["IOSurface Lookup"]
+                ControlWriter["Control Message Writer"]
+            end
+            AVF["AVFoundation"]
+        end
+    end
+
+    CameraSource -- "Frames" --> IOSurfaceWriter
+    IOSurfaceWriter -- "Hardware Write" --> GPU
+    IOSurfaceWriter -- "Passes IOSurfaceID" --> SHM
+    
+    SHM -- "Reads ID" --> IOSurfaceReader
+    GPU -- "Zero-Copy Read" --> IOSurfaceReader
+    IOSurfaceReader -- "CMSampleBuffer" --> AVF
+    
+    AVF -- "UI Events (Focus, Flip)" --> ControlWriter
+    ControlWriter -- "Control Messages" --> SHM
+    SHM -- "Reads Messages" --> ControlReader
+    ControlReader -. "Adjusts Lens/Config" .-> CameraSource
+    
+    VNODE -. "Listens for deletion" .-> SHM
+```
+
+### 1. Zero-Copy `IOSurface` Delivery (Hardware Acceleration)
+Instead of using a POSIX shared memory file for raw BGRA bytes (which requires `memcpy` operations on the CPU), the architecture could transition to `IOSurface`. `IOSurface` is Apple’s native framework for sharing hardware-accelerated graphics memory across process boundaries. `FrameHost` would write frames directly to the GPU, place the integer `IOSurfaceID` in the shared memory header, and the iOS app would use `IOSurfaceLookup()` to grab it. This provides **true zero-copy delivery** with virtually 0% CPU overhead.
+
+### 2. Seamless Hot-Swapping (The VNODE File Monitor)
+To fix the limitation where resolution changes freeze the camera feed, the iOS app's `SharedFrameReader` could implement a Grand Central Dispatch (GCD) `DISPATCH_SOURCE_TYPE_VNODE` monitor. This allows the iOS app to listen for `NOTE_DELETE` or `NOTE_RENAME` events on the shared memory file. If `sim-cli` deletes the file to change resolutions, the app detects it instantly, closes the old memory map, and `mmap`s the new file on the fly—making camera swapping perfectly seamless.
+
+### 3. Bidirectional Control Channel
+Currently, data flows one way (macOS → iOS). By adding a lock-free **Control Ring-Buffer** in the shared memory header, the iOS app could send camera control events *back* to macOS. If the user taps the "Flip Camera" button or taps to focus inside the iOS Simulator, `MiniCamInject` could write those events to the control buffer. `FrameHost` would read them and automatically switch from the Mac's FaceTime camera to a plugged-in DSLR or adjust the hardware focus, making the injection truly interactive.
