@@ -485,7 +485,7 @@ static void startDelivery(void) {
     gDeliveryTimer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, gDeliveryQueue);
     dispatch_source_set_timer(
         gDeliveryTimer,
-        DISPATCH_TIME_NOW,
+        dispatch_time(DISPATCH_TIME_NOW, 0),
         intervalNs,
         leewayNs
     );

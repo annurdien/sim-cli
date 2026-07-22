@@ -8,165 +8,85 @@
 
 <div align="center">
   <img src="./assets/cli.png" alt="sim-cli Terminal Icon" width="600">
-  <p>
-    <strong>iOS Simulator & Android Emulator Manager</strong>
-  </p>
-  <p>
-    A cross-platform command-line tool for managing mobile development environments.
-  </p>
+  <p><strong>iOS Simulator & Android Emulator Manager</strong></p>
+  <p>A unified command-line tool to control local mobile development environments.</p>
 </div>
 
-## Overview
+## Quick Start
 
-`sim-cli` provides a unified interface for iOS simulators and Android emulators. It allows you to manage devices, install apps, capture media, and view logs directly from the terminal.
-
-## Features
-
-- **Device Management**: List, start, stop, restart, delete, and erase simulators and emulators.
-- **App Management**: Install and uninstall `.apk`, `.app`, and `.ipa` files.
-- **Media Capture**: Take screenshots, record screen activity, and copy outputs to the clipboard.
-- **GIF Conversion**: Convert screen recordings to GIFs using `ffmpeg`.
-- **Deep Linking**: Open URLs or deeplinks on running devices.
-- **Camera Injection**: Inject physical webcams or static images into iOS simulators.
-- **Shell Autocompletion**: Tab completion for bash, zsh, fish, and PowerShell.
-
-## Installation
-
-### Homebrew (macOS/Linux)
-
-Install `sim-cli` and `ffmpeg` via Homebrew:
+Install via Homebrew:
 
 ```bash
 brew install annurdien/tap/sim-cli
 ```
 
-### Build from Source
+Manage devices directly from your terminal:
 
 ```bash
-git clone https://github.com/annurdien/sim-cli.git
-cd sim-cli
-make build
-make install
-```
-
-### Prerequisites
-
-`sim-cli` interacts with native tools provided by Apple and Google. You need the following dependencies installed based on your target platform:
-
-**iOS Simulators (macOS only):**
-- **Xcode / Command Line Tools**: Install via the Mac App Store or run `xcode-select --install`.
-
-**Android Emulators:**
-- **Android SDK / Command-line Tools**: Requires `adb` and the `emulator` tool. Install via [Android Studio](https://developer.android.com/studio). Check **Android SDK Command-line Tools** in the SDK Manager.
-
-**Optional:**
-- **ffmpeg**: Required for GIF recording (`brew install ffmpeg`).
-
-Run `sim doctor` after installation to verify dependencies.
-
-## Usage
-
-### Quick Start
-
-```bash
-# List available devices
+# View all available devices
 sim list
 
-# Start a device
+# Boot a specific device
 sim start "iPhone 15 Pro"
 
-# Install an app
+# Install a compiled app
 sim install app-release.apk
 
-# Stop the device
+# Shut down the device
 sim stop "iPhone 15 Pro"
 ```
 
-### Shell Autocompletion
+## Platform Requirements
 
-Enable tab completion for device names and commands:
+`sim-cli` relies on the native developer tools provided by Apple and Google. Ensure you have the correct dependencies installed for your target platform.
 
-```bash
-# Zsh
-sim completion zsh > ~/.zshrc_sim_completion
-source ~/.zshrc_sim_completion
+### iOS (macOS only)
+You must install Xcode and its associated command-line tools.
+- Download Xcode from the Mac App Store.
+- Run `xcode-select --install` in your terminal.
 
-# Bash
-sim completion bash > /etc/bash_completion.d/sim
+### Android (macOS / Linux / Windows)
+You must install the Android SDK and the emulator tools.
+- Download [Android Studio](https://developer.android.com/studio).
+- Open the SDK Manager and check **Android SDK Command-line Tools**.
 
-# Fish
-sim completion fish > ~/.config/fish/completions/sim.fish
-```
+### Optional
+- **FFmpeg**: Required to convert screen recordings to GIFs. Install via Homebrew: `brew install ffmpeg`.
+
+Run `sim doctor` to verify your environment setup.
 
 ## Feature Support
 
-| Feature / Command | iOS | Android | Notes |
-|---|---|---|---|
-| **Core Lifecycle** (`start`, `stop`, `delete`, `erase`) | ✅ | ✅ | Full support on both platforms. |
-| **App Management** (`install`, `uninstall`) | ✅ | ✅ | Handles `.apk`, `.app`, and `.ipa`. |
-| **Media** (`screenshot`, `record`) | ✅ | ✅ | Includes clipboard copy and GIF conversion. |
-| **Deep Linking** (`open`) | ✅ | ✅ | Opens URLs or custom URI schemes. |
-| **Real-time Logs** (`logs`) | ✅ | ✅ | Streams and filters system and app logs. |
-| **Copy File To Device** (`copy to`) | ✅ | ✅ | iOS: Adds to Photos. Android: Pushes to Download. |
-| **Copy File From Device** (`copy from`)| ❌ | ✅ | Pulls files from Android to the local machine. |
-| **Clone Device** (`clone`) | ✅ | ❌ | Duplicates an existing simulator. |
-| **Push Notifications** (`push`) | ✅ | ❌ | Sends custom push payloads. |
-| **Watch Pairing** (`pair`) | ✅ | ❌ | Pairs an Apple Watch with an iPhone simulator. |
-| **Camera Injection** (`cam`) | ✅ | ❌ | Injects frames into the iOS Simulator camera. |
+Capabilities differ slightly depending on the underlying platform APIs.
 
-## Commands Reference
+| Feature / Command | iOS | Android | Details |
+|---|:---:|:---:|---|
+| **Lifecycle** (`start`, `stop`, `delete`, `erase`) | ✅ | ✅ | Boot, shutdown, delete, or factory-reset devices. |
+| **App Deployment** (`install`, `uninstall`) | ✅ | ✅ | Supports `.apk`, `.app`, and `.ipa` files. |
+| **Media Capture** (`screenshot`, `record`) | ✅ | ✅ | Output directly to clipboard or convert to GIF. |
+| **Deep Linking** (`open`) | ✅ | ✅ | Open URLs or trigger custom URI schemes. |
+| **Log Streaming** (`logs`) | ✅ | ✅ | Stream system and app-level logs in real-time. |
+| **File Push** (`copy to`) | ✅ | ✅ | iOS: Adds to Photos. Android: Pushes to Downloads. |
+| **File Pull** (`copy from`)| ❌ | ✅ | Pull files from the emulator to the host machine. |
+| **Device Cloning** (`clone`) | ✅ | ❌ | Duplicate an existing simulator state. |
+| **Push Notifications** (`push`) | ✅ | ❌ | Send custom APNs JSON payloads to an app. |
+| **Watch Pairing** (`pair`) | ✅ | ❌ | Pair an Apple Watch simulator with an iPhone. |
+| **Camera Injection** (`cam`) | ✅ | ❌ | Inject physical Mac webcams into the simulator. |
 
-| Command | Aliases | Description |
-|---|---|---|
-| `doctor` | - | Check system dependencies (Xcode, Android SDK, ffmpeg). |
-| `list` | `l`, `ls` | List available simulators and emulators. |
-| `start <device>` | `s` | Start a device by name or UDID. |
-| `stop <device>` | `st`, `sd`, `shutdown` | Stop or shut down a running device. |
-| `restart <device>` | `r` | Restart a device. |
-| `delete <device>` | `d`, `del` | Permanently delete a device. |
-| `erase <device>` | `reset` | Factory reset a device. |
-| `clone <source> <new>`| - | Clone an iOS simulator. |
-| `install [dev] <app>`| `i` | Install an app (`.apk`, `.app`, `.ipa`). |
-| `uninstall [dev] <id>`| `u`, `remove`| Uninstall an app by ID or package name. |
-| `open [device] <url>` | `o` | Open a deeplink or URL. |
-| `screenshot <device> [file]` | `ss`, `shot` | Take a screenshot. |
-| `record <device> [file]` | `rec` | Record the screen. |
-| `logs [device]` | `log` | Stream real-time logs. |
-| `push [dev] <id> <file>`| - | Send a push notification (iOS only). |
-| `create` | - | Create a new iOS simulator or Android emulator. |
-| `status` | - | Show a dashboard of running devices. |
-| `copy to/from` | - | Transfer files to or from a device. |
-| `pair [watch] [phone]` | - | Pair an Apple Watch simulator with an iPhone simulator. |
-| `config` | - | Manage sim-cli configuration values. |
-| `last` | - | Show the last used device. |
-| `lts` | - | Start the last used device. |
-| `completion <shell>` | - | Generate a shell autocompletion script. |
-| `cam` | - | iOS Simulator camera injection and management. |
-| `version` | `-v` | Show the current version. |
-| `help` | - | Show help information. |
+## Usage Guide
 
-## Interactive Mode (TUI)
+Most commands that require a device argument will launch an interactive Text User Interface (TUI) if run without one. 
 
-Commands that require a device argument (`start`, `stop`, `shutdown`, `restart`, `delete`, `erase`, `logs`, `pair`) will launch an interactive Text User Interface (TUI) if run without an argument, allowing you to select a target device.
+### Media Capture
+```bash
+# Take a screenshot and copy to clipboard
+sim screenshot "Pixel 7" --copy
 
-### screenshot Options
+# Record the screen for 15 seconds and output a GIF
+sim record "iPhone 15 Pro" --duration 15 --gif
+```
 
-| Flag | Shorthand | Description |
-|---|---|---|
-| `--copy` | `-c` | Copy the screenshot to the clipboard. |
-
-### record Options
-
-| Flag | Shorthand | Description |
-|---|---|---|
-| `--duration` | `-d` | Recording duration in seconds (e.g., `--duration 15`). |
-| `--gif` | `-g` | Convert the recording to a GIF. |
-| `--copy` | `-c` | Copy the output file path to the clipboard. |
-
-### open Options
-
-The `open` command accepts URLs or custom URI schemes. If no device is specified, it targets the first booted device:
-
+### Deep Linking
 ```bash
 # Auto-select the first booted device
 sim open "myapp://settings"
@@ -175,95 +95,65 @@ sim open "myapp://settings"
 sim open "iPhone 15 Pro" "myapp://settings"
 ```
 
-### logs Options
-
-| Flag | Shorthand | Description |
-|---|---|---|
-| `--level` | `-l` | Filter logs by level (`debug`, `info`, `warn`, `error`). |
-| `--filter` | `-f` | Filter logs with a grep pattern. |
-| `--app` | `-a` | Filter logs by app bundle ID (iOS) or package name (Android). |
-
-### push Options
-
-| Flag | Shorthand | Description |
-|---|---|---|
-| `--template` | `-t` | Generate a sample payload template (`push.json`). |
-
-### create Options
-
-| Flag | Shorthand | Description |
-|---|---|---|
-| `--ios` / `--android` | - | Specify the target platform (required). |
-| `--name` | `-n` | The name for the new device. |
-| `--type` | `-t` | The hardware device type (e.g., `iPhone-15`). |
-| `--runtime` | `-r` | The OS runtime/system image (e.g., `iOS-17-0`). |
-| `--list-types` | - | Display available hardware types and OS runtimes. |
-
-### copy Usage
-
+### Log Filtering
 ```bash
-# Copy a local file to a device (iOS: Photos, Android: /sdcard/Download)
+# Filter logs by severity and application package
+sim logs "Pixel 7" --level error --app com.example.myapp
+```
+
+### File Transfer
+```bash
+# Push an image to the device
 sim copy to "iPhone 15 Pro" ~/Pictures/test.png
 
-# Copy a remote file from an Android device to your machine
-sim copy from "Pixel_7" /sdcard/Download/test.png ./
+# Pull a file from Android
+sim copy from "Pixel 7" /sdcard/Download/test.png ./
 ```
 
 ## Camera Injection
 
-`sim-cli` allows you to inject physical webcams, Continuity Cameras, or static images into iOS Simulator applications.
+`sim-cli` includes a custom injection engine that forces iOS Simulator apps to read from the Mac's physical cameras (webcams, Continuity Cameras) instead of rendering a black screen.
 
-Open the camera management dashboard:
+To manage camera injection, run:
 ```bash
 sim cam
 ```
 
-Read the [SIM-CLI Camera Architecture](docs/SIM_CAM_ARCHITECTURE.md) for technical details on shared memory and dylib injection.
+For technical details on how `sim-cli` achieves zero-copy frame delivery using `IOSurface` and `method_exchangeImplementations`, read the [SIM-CLI Camera Architecture](docs/SIM_CAM_ARCHITECTURE.md) document.
 
 ## Configuration
 
-Configuration and runtime state (like the last used device) are stored in `~/.sim-cli/config.json`. Manage settings using the `config` command:
+Settings and runtime state are stored in `~/.sim-cli/config.json`. 
 
 ```bash
 # View configuration
 sim config show
 
-# Set the default directory for captures
+# Set the default directory for screenshots and recordings
 sim config set outputDir ~/Desktop/captures
 
-# Set GIF recording framerate and scale
+# Configure GIF recording quality
 sim config set gifFps 15
 sim config set gifScale 320
 ```
 
-Supported keys: `defaultDevice`, `outputDir`, `gifFps`, `gifScale`.
+Enable shell autocompletion for device names:
+```bash
+sim completion zsh > ~/.zshrc_sim_completion
+source ~/.zshrc_sim_completion
+```
 
-The repository's `config.yaml` file stores version metadata for the build system:
+## Building from Source
 
-```yaml
-app:
-  name: "sim-cli"
-  version: "1.7.0"
-  description: "CLI tool to manage iOS simulators and Android emulators"
+```bash
+git clone https://github.com/annurdien/sim-cli.git
+cd sim-cli
+make build
+make install
 ```
 
 To release a new version, bump the `version` in `config.yaml` and commit with a message starting with `release:`.
 
-## Delete and Erase Commands
-
-- `delete`: Permanently removes the simulator or emulator. Recreate the device via Xcode or AVD Manager.
-- `erase`: Wipes all user data on the device (factory reset).
-
-Use the `--force` or `-f` flag to bypass the interactive confirmation prompt.
-
-## Contributing
-
-1. Fork the repository.
-2. Create a feature branch (`git checkout -b feature/name`).
-3. Commit your changes (`git commit -m 'Add feature'`).
-4. Push to the branch (`git push origin feature/name`).
-5. Open a pull request.
-
 ## License
 
-MIT License. See [LICENSE](LICENSE).
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.

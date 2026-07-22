@@ -97,6 +97,7 @@ compile_arch() {
         -framework QuartzCore \
         -framework VideoToolbox \
         -framework CoreGraphics \
+        -framework IOSurface \
         "${BUILD_DIR}/SharedFrameReader_${ARCH}.o" \
         "${BUILD_DIR}/SampleBufferFactory_${ARCH}.o" \
         "${BUILD_DIR}/CaptureHooks_${ARCH}.o" \

@@ -21,7 +21,6 @@ NS_ASSUME_NONNULL_BEGIN
 /// Creates a CMSampleBuffer from a FrameSnapshot read via SharedFrameReader.
 /// Returns a +1 CF reference on success; the caller is responsible for CFRelease.
 /// Returns nil if the snapshot is invalid or buffer creation fails.
-- (nullable CMSampleBufferRef)sampleBufferFromSnapshot:(const FrameSnapshot &)snap CF_RETURNS_RETAINED;
 
 /// Optimised single-copy path: reads frame metadata from the shm header, allocates
 /// a CVPixelBuffer, and copies the frame data directly (one copy vs two).

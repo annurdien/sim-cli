@@ -9,23 +9,12 @@
 #include <string>
 #include <vector>
 
-/// Result returned by SharedFrameReader::copyLatestFrame.
-struct FrameSnapshot {
-    bool      valid        = false;
-    uint32_t  width        = 0;
-    uint32_t  height       = 0;
-    uint32_t  bytesPerRow  = 0;
-    uint64_t  ptsNs        = 0;    ///< Presentation timestamp (monotonic ns)
-    uint64_t  framesProduced = 0;
-    std::vector<uint8_t> data;     ///< Owned BGRA copy; length = bytesPerRow * height
-};
-
-/// Metadata returned by the zero-copy path (no pixel data).
+/// Metadata returned by the zero-copy path.
 struct FrameInfo {
     bool      valid        = false;
     uint32_t  width        = 0;
     uint32_t  height       = 0;
-    uint32_t  bytesPerRow  = 0;
+    uint32_t  ioSurfaceID  = 0;
     uint64_t  ptsNs        = 0;
     uint64_t  framesProduced = 0;
 };
@@ -54,26 +43,27 @@ public:
         return mapping_ ? static_cast<const MSCStreamHeader*>(mapping_) : nullptr;
     }
 
-    /// Copy the latest published frame into a FrameSnapshot.
+    /// Gets the latest frame metadata, including the IOSurfaceID.
     /// Uses the sequence-lock algorithm to ensure a consistent read.
-    /// Returns an invalid snapshot if the producer is stalled or the header is corrupt.
-    FrameSnapshot copyLatestFrame();
-
-    /// Zero-copy path: copy the latest frame directly into `dst` (caller-allocated).
-    /// `dstBytesPerRow` describes the caller's row stride and must be at least
-    /// the stream stride. `dstSize` must cover dstBytesPerRow * height.
-    /// Returns metadata; returns invalid FrameInfo if the header is corrupt or
-    /// the buffer is too small. Eliminates the intermediate std::vector allocation.
-    FrameInfo copyLatestFrameInto(void* dst, size_t dstBytesPerRow, size_t dstSize);
+    FrameInfo getLatestFrameInfo();
 
     /// Check whether the producer has gone stale (no update within MSC_STALE_THRESHOLD_NS).
     bool isProducerStale() const;
 
+    /// Enqueue a control event to the shared memory ring buffer.
+    /// Returns true if enqueued successfully, false if the buffer is full or disconnected.
+    bool enqueueControlEvent(const MSCControlEvent& event);
+
 private:
+    void setupVnodeMonitor();
+    void teardownVnodeMonitor();
+
     std::string  path_;
     void*        mapping_     = nullptr;
     size_t       mappingSize_ = 0;
     int          fd_          = -1;
+    
+    void*        vnodeSource_ = nullptr; // dispatch_source_t
 
     MSCStreamHeader* header() const {
         return static_cast<MSCStreamHeader*>(mapping_);

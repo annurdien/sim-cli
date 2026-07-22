@@ -11,6 +11,7 @@
 #include <unistd.h>
 #include <atomic>
 #include <cstring>
+#include <dispatch/dispatch.h>
 #include <mach/mach_time.h>
 
 // ---------------------------------------------------------------------------
@@ -57,8 +58,12 @@ SharedFrameReader::~SharedFrameReader() {
 bool SharedFrameReader::open() {
     close();
 
-    fd_ = ::open(path_.c_str(), O_RDONLY);
-    if (fd_ == -1) return false;
+    fd_ = ::open(path_.c_str(), O_RDWR);
+    if (fd_ == -1) {
+        // Fallback to read-only if we can't open for writing
+        fd_ = ::open(path_.c_str(), O_RDONLY);
+        if (fd_ == -1) return false;
+    }
 
     // Read the header to discover the mapping size.
     MSCStreamHeader hdr = {};
@@ -72,7 +77,7 @@ bool SharedFrameReader::open() {
         return false;
     }
 
-    size_t total = msc_mapping_size(hdr.bufferSize);
+    size_t total = msc_mapping_size();
 
     struct stat st;
     if (fstat(fd_, &st) != 0 || (size_t)st.st_size < total) {
@@ -80,95 +85,71 @@ bool SharedFrameReader::open() {
         return false;
     }
 
-    void* ptr = mmap(nullptr, total, PROT_READ, MAP_SHARED, fd_, 0);
+    void* ptr = mmap(nullptr, total, PROT_READ | PROT_WRITE, MAP_SHARED, fd_, 0);
     if (ptr == MAP_FAILED) {
-        ::close(fd_); fd_ = -1;
-        return false;
+        ptr = mmap(nullptr, total, PROT_READ, MAP_SHARED, fd_, 0);
+        if (ptr == MAP_FAILED) {
+            ::close(fd_); fd_ = -1;
+            return false;
+        }
     }
 
     mapping_     = ptr;
     mappingSize_ = total;
+    
+    setupVnodeMonitor();
+    
     return true;
 }
 
 void SharedFrameReader::close() {
+    teardownVnodeMonitor();
     if (mapping_) { munmap(mapping_, mappingSize_); mapping_ = nullptr; }
     if (fd_ != -1) { ::close(fd_); fd_ = -1; }
     mappingSize_ = 0;
 }
 
-FrameSnapshot SharedFrameReader::copyLatestFrame() {
-    FrameSnapshot snap;
-    if (!mapping_) return snap;
-
-    auto* hdr = header();
-    if (hdr->magic != MSC_MAGIC || hdr->version != MSC_VERSION) return snap;
-
-    const uint32_t bufSize = hdr->bufferSize;
-    const uint32_t bpr     = hdr->bytesPerRow;
-    const uint32_t w       = hdr->width;
-    const uint32_t h       = hdr->height;
-
-    auto* seqAtomic = atomicAt<uint64_t>(mapping_, kOffSequence);
-    auto* idxAtomic = atomicAt<uint32_t>(mapping_, kOffPublishedIndex);
-    auto* fpAtomic  = atomicAt<uint64_t>(mapping_, kOffFramesProduced);
-
-    // Sequence-lock read: retry up to 64 times.
-    for (int attempt = 0; attempt < 64; ++attempt) {
-        uint64_t seqA = seqAtomic->load(std::memory_order_acquire);
-        if (seqA & 1u) {
-            sched_yield();
-            continue;
-        }
-
-        uint32_t idx  = idxAtomic->load(std::memory_order_acquire);
-        uint64_t pts  = hdr->presentationTimeNs;
-        uint64_t fp   = fpAtomic->load(std::memory_order_acquire);
-
-        if (idx >= MSC_BUFFER_COUNT) break;
-
-        const uint8_t* src = static_cast<const uint8_t*>(
-            msc_frame_ptr(mapping_, bufSize, idx)
-        );
-
-        std::vector<uint8_t> pixels(bufSize);
-        std::memcpy(pixels.data(), src, bufSize);
-
-        uint64_t seqB = seqAtomic->load(std::memory_order_acquire);
-        if (seqA != seqB) continue;   // Torn read — retry.
-
-        snap.valid          = true;
-        snap.width          = w;
-        snap.height         = h;
-        snap.bytesPerRow    = bpr;
-        snap.ptsNs          = pts;
-        snap.framesProduced = fp;
-        snap.data           = std::move(pixels);
-        return snap;
+void SharedFrameReader::setupVnodeMonitor() {
+    if (fd_ == -1) return;
+    
+    dispatch_queue_t queue = dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0);
+    dispatch_source_t source = dispatch_source_create(DISPATCH_SOURCE_TYPE_VNODE, fd_, DISPATCH_VNODE_DELETE | DISPATCH_VNODE_RENAME, queue);
+    
+    if (source) {
+        dispatch_source_set_event_handler(source, ^{
+            // The file was deleted or renamed (e.g. Mac changed resolution).
+            // This allows the injector to try re-opening the file.
+            // For now, we rely on the SampleBufferFactory polling isProducerStale() 
+            // and checking if open() fails/succeeds on the next iteration.
+            // In a fully event-driven setup, we would signal the factory here.
+        });
+        
+        dispatch_source_set_cancel_handler(source, ^{
+            // Clean up if needed
+        });
+        
+        dispatch_resume(source);
+        vnodeSource_ = source;
     }
-
-    return snap;
 }
 
-bool SharedFrameReader::isProducerStale() const {
-    if (!mapping_) return true;
-    auto* hdr = header();
-    return (monoNs() - hdr->presentationTimeNs) > MSC_STALE_THRESHOLD_NS;
+void SharedFrameReader::teardownVnodeMonitor() {
+    if (vnodeSource_) {
+        dispatch_source_cancel((dispatch_source_t)vnodeSource_);
+        dispatch_release((dispatch_source_t)vnodeSource_);
+        vnodeSource_ = nullptr;
+    }
 }
 
-FrameInfo SharedFrameReader::copyLatestFrameInto(void* dst, size_t dstBytesPerRow, size_t dstSize) {
+FrameInfo SharedFrameReader::getLatestFrameInfo() {
     FrameInfo info;
-    if (!mapping_ || !dst) return info;
+    if (!mapping_) return info;
 
     auto* hdr = header();
     if (hdr->magic != MSC_MAGIC || hdr->version != MSC_VERSION) return info;
 
-    const uint32_t bufSize = hdr->bufferSize;
-    const uint32_t bpr     = hdr->bytesPerRow;
-    const uint32_t w       = hdr->width;
-    const uint32_t h       = hdr->height;
-
-    if (dstBytesPerRow < bpr || dstSize < dstBytesPerRow * h) return info;
+    const uint32_t w = hdr->width;
+    const uint32_t h = hdr->height;
 
     auto* seqAtomic = atomicAt<uint64_t>(mapping_, kOffSequence);
     auto* idxAtomic = atomicAt<uint32_t>(mapping_, kOffPublishedIndex);
@@ -186,17 +167,9 @@ FrameInfo SharedFrameReader::copyLatestFrameInto(void* dst, size_t dstBytesPerRo
         uint64_t pts = hdr->presentationTimeNs;
         uint64_t fp  = fpAtomic->load(std::memory_order_acquire);
 
-        if (idx >= MSC_BUFFER_COUNT) break;
-
-        const uint8_t* src = static_cast<const uint8_t*>(
-            msc_frame_ptr(mapping_, bufSize, idx)
-        );
-        uint8_t* out = static_cast<uint8_t*>(dst);
-        // The stream and CVPixelBuffer may use different strides. Copy each
-        // source row into the destination row rather than treating both as a
-        // contiguous image.
-        for (uint32_t row = 0; row < h; ++row) {
-            std::memcpy(out + row * dstBytesPerRow, src + row * bpr, bpr);
+        uint32_t ioSurfaceID = 0;
+        if (idx < 3) {
+            ioSurfaceID = hdr->ioSurfaceIDs[idx];
         }
 
         uint64_t seqB = seqAtomic->load(std::memory_order_acquire);
@@ -205,11 +178,39 @@ FrameInfo SharedFrameReader::copyLatestFrameInto(void* dst, size_t dstBytesPerRo
         info.valid          = true;
         info.width          = w;
         info.height         = h;
-        info.bytesPerRow    = bpr;
+        info.ioSurfaceID    = ioSurfaceID;
         info.ptsNs          = pts;
         info.framesProduced = fp;
         return info;
     }
 
     return info;
+}
+
+bool SharedFrameReader::isProducerStale() const {
+    if (!mapping_) return true;
+    auto* hdr = header();
+    return (monoNs() - hdr->presentationTimeNs) > MSC_STALE_THRESHOLD_NS;
+}
+
+bool SharedFrameReader::enqueueControlEvent(const MSCControlEvent& event) {
+    if (!mapping_) return false;
+    
+    auto* headAtomic = atomicAt<uint32_t>(mapping_, MSC_OFF_CONTROL_HEAD);
+    auto* tailAtomic = atomicAt<uint32_t>(mapping_, MSC_OFF_CONTROL_TAIL);
+    
+    uint32_t head = headAtomic->load(std::memory_order_acquire);
+    uint32_t tail = tailAtomic->load(std::memory_order_acquire);
+    
+    uint32_t nextHead = head + 1;
+    if (nextHead - tail > MSC_CONTROL_RING_CAPACITY) {
+        // Buffer full
+        return false;
+    }
+    
+    auto* ring = msc_control_ring_ptr(mapping_);
+    ring[head % MSC_CONTROL_RING_CAPACITY] = event;
+    
+    headAtomic->store(nextHead, std::memory_order_release);
+    return true;
 }

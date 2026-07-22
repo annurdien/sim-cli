@@ -28,23 +28,24 @@
 
 // ----------------------------------------------------------------------------
 // Stream header — lives at offset 0 in the shared-memory file.
-// The three frame buffers follow immediately after sizeof(MSCStreamHeader).
+// The control ring buffer follows immediately after sizeof(MSCStreamHeader).
 //
 // Field layout (all offsets from struct start, verified by static assert):
 //   [  0] uint32_t magic
 //   [  4] uint32_t version
 //   [  8] uint32_t width
 //   [ 12] uint32_t height
-//   [ 16] uint32_t bytesPerRow
+//   [ 16] uint32_t controlHead     ← ATOMIC
 //   [ 20] uint32_t pixelFormat
-//   [ 24] uint32_t bufferCount
-//   [ 28] uint32_t bufferSize
+//   [ 24] uint32_t controlTail     ← ATOMIC
+//   [ 28] uint32_t ioSurfaceID     ← Single ID if static, or just unused
 //   [ 32] uint64_t sequence        ← ATOMIC, use msc_seq_*()
 //   [ 40] uint32_t publishedIndex  ← ATOMIC, use msc_idx_*()
 //   [ 44] uint32_t _pad0           ← explicit padding for alignment
 //   [ 48] uint64_t presentationTimeNs  (plain, written under seq lock)
 //   [ 56] uint64_t framesProduced  ← ATOMIC, use msc_fp_*()
-//   [ 64] uint8_t  reserved[64]
+//   [ 64] uint32_t ioSurfaceIDs[3] ← The 3 IOSurface IDs for the triple buffer
+//   [ 76] uint8_t  reserved[52]
 //   [128] = total
 // ----------------------------------------------------------------------------
 typedef struct {
@@ -52,27 +53,47 @@ typedef struct {
     uint32_t version;              // [  4]
     uint32_t width;                // [  8]
     uint32_t height;               // [ 12]
-    uint32_t bytesPerRow;          // [ 16]
+    uint32_t controlHead;          // [ 16] ATOMIC (Written by iOS, Read by macOS)
     uint32_t pixelFormat;          // [ 20]
-    uint32_t bufferCount;          // [ 24]
-    uint32_t bufferSize;           // [ 28]
+    uint32_t controlTail;          // [ 24] ATOMIC (Written by macOS, Read by iOS)
+    uint32_t ioSurfaceID;          // [ 28] (Legacy/Fallback)
     uint64_t sequence;             // [ 32] ATOMIC — use msc_seq_*()
     uint32_t publishedIndex;       // [ 40] ATOMIC — use msc_idx_*()
     uint32_t _pad0;                // [ 44] explicit pad
     uint64_t presentationTimeNs;   // [ 48]
     uint64_t framesProduced;       // [ 56] ATOMIC — use msc_fp_*()
-    uint8_t  reserved[64];         // [ 64]
+    uint32_t ioSurfaceIDs[3];      // [ 64] 
+    uint8_t  reserved[52];         // [ 76]
 } MSCStreamHeader;                 // [128] total
 
 // Byte offsets used by AtomicHelpers.c — must match the layout above.
 #define MSC_OFF_SEQUENCE        32u
 #define MSC_OFF_PUBLISHED_INDEX 40u
 #define MSC_OFF_FRAMES_PRODUCED 56u
+#define MSC_OFF_CONTROL_HEAD    16u
+#define MSC_OFF_CONTROL_TAIL    24u
 
 // Compile-time size check (C11 _Static_assert).
 _Static_assert(sizeof(MSCStreamHeader) == 128, "MSCStreamHeader must be exactly 128 bytes");
 
 #define MSC_HEADER_EXPECTED_SIZE 128u
+
+// ----------------------------------------------------------------------------
+// Control Channel Schema
+// ----------------------------------------------------------------------------
+typedef enum : uint32_t {
+    MSC_CONTROL_EVENT_NONE          = 0,
+    MSC_CONTROL_EVENT_FLIP_CAMERA   = 1,
+    MSC_CONTROL_EVENT_FOCUS_POINT   = 2
+} MSCControlEventType;
+
+typedef struct {
+    uint32_t type;
+    float x;
+    float y;
+} MSCControlEvent;
+
+#define MSC_CONTROL_RING_CAPACITY 16u
 
 // ----------------------------------------------------------------------------
 // Helpers
@@ -84,13 +105,13 @@ static inline uint32_t msc_bytes_per_row(uint32_t width) {
     return (raw + MSC_ROW_ALIGNMENT - 1u) & ~(MSC_ROW_ALIGNMENT - 1u);
 }
 
-// Total mmap size: header + 3 * bufferSize.
-static inline uint64_t msc_mapping_size(uint32_t bufferSize) {
-    return (uint64_t)MSC_HEADER_EXPECTED_SIZE + (uint64_t)MSC_BUFFER_COUNT * bufferSize;
+// Total mmap size: header + control ring buffer.
+static inline uint64_t msc_mapping_size(void) {
+    return (uint64_t)MSC_HEADER_EXPECTED_SIZE + (uint64_t)MSC_CONTROL_RING_CAPACITY * sizeof(MSCControlEvent);
 }
 
-// Pointer to frame buffer N inside a mapped region.
-static inline void *msc_frame_ptr(void *base, uint32_t bufferSize, uint32_t index) {
+// Pointer to the control ring buffer inside a mapped region.
+static inline MSCControlEvent *msc_control_ring_ptr(void *base) {
     uint8_t *p = (uint8_t *)base;
-    return p + MSC_HEADER_EXPECTED_SIZE + (uint64_t)bufferSize * index;
+    return (MSCControlEvent *)(p + MSC_HEADER_EXPECTED_SIZE);
 }

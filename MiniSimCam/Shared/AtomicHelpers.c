@@ -11,6 +11,8 @@
 #define SEQ_PTR(h)  ((volatile uint64_t *)((uint8_t *)(h) + MSC_OFF_SEQUENCE))
 #define IDX_PTR(h)  ((volatile uint32_t *)((uint8_t *)(h) + MSC_OFF_PUBLISHED_INDEX))
 #define FP_PTR(h)   ((volatile uint64_t *)((uint8_t *)(h) + MSC_OFF_FRAMES_PRODUCED))
+#define CTL_HEAD_PTR(h) ((volatile uint32_t *)((uint8_t *)(h) + MSC_OFF_CONTROL_HEAD))
+#define CTL_TAIL_PTR(h) ((volatile uint32_t *)((uint8_t *)(h) + MSC_OFF_CONTROL_TAIL))
 
 // ---- Sequence ---------------------------------------------------------------
 
@@ -40,4 +42,22 @@ uint64_t msc_fp_load_relaxed(const void *header) {
 
 uint64_t msc_fp_fetch_add(void *header, uint64_t delta) {
     return __atomic_fetch_add(FP_PTR(header), delta, __ATOMIC_RELAXED);
+}
+
+// ---- Control Channel --------------------------------------------------------
+
+uint32_t msc_ctl_head_load_acquire(const void *header) {
+    return __atomic_load_n(CTL_HEAD_PTR(header), __ATOMIC_ACQUIRE);
+}
+
+void msc_ctl_head_store_release(void *header, uint32_t value) {
+    __atomic_store_n(CTL_HEAD_PTR(header), value, __ATOMIC_RELEASE);
+}
+
+uint32_t msc_ctl_tail_load_acquire(const void *header) {
+    return __atomic_load_n(CTL_TAIL_PTR(header), __ATOMIC_ACQUIRE);
+}
+
+void msc_ctl_tail_store_release(void *header, uint32_t value) {
+    __atomic_store_n(CTL_TAIL_PTR(header), value, __ATOMIC_RELEASE);
 }

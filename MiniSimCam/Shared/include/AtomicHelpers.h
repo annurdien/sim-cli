@@ -40,6 +40,21 @@ uint64_t msc_fp_load_relaxed(const void *header);
 /// Relaxed fetch-and-add on framesProduced; returns the old value.
 uint64_t msc_fp_fetch_add(void *header, uint64_t delta);
 
+// ---- Control Channel (offsets 16 and 24, uint32_t _Atomic) ----------------
+// See MSC_OFF_CONTROL_HEAD / MSC_OFF_CONTROL_TAIL.
+
+/// Acquire-load the controlHead field.
+uint32_t msc_ctl_head_load_acquire(const void *header);
+
+/// Release-store the controlHead field.
+void msc_ctl_head_store_release(void *header, uint32_t value);
+
+/// Acquire-load the controlTail field.
+uint32_t msc_ctl_tail_load_acquire(const void *header);
+
+/// Release-store the controlTail field.
+void msc_ctl_tail_store_release(void *header, uint32_t value);
+
 #ifdef __cplusplus
 }
 #endif

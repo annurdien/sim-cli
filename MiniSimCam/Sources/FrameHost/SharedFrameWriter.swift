@@ -23,6 +23,7 @@ final class SharedFrameWriter {
     private var mapping: UnsafeMutableRawPointer?
     private var mappingSize: Int = 0
     private var frameSize: Int = 0
+    private var retainedBuffers: [CVPixelBuffer?] = [nil, nil, nil]
 
     // MARK: - Init / Teardown
 
@@ -35,9 +36,7 @@ final class SharedFrameWriter {
     }
 
     func open(width: Int, height: Int) throws {
-        let bytesPerRow = ImageSource.alignedBytesPerRow(width)
-        let bufSize = bytesPerRow * height
-        let totalSize = 128 + 3 * bufSize     // header (128 B) + 3 × frame
+        let totalSize = 128 + 16 * 12 // header (128 B) + 16 x MSCControlEvent (12B)
 
         var fd = Darwin.open(path, O_RDWR)
         var needsInit = false
@@ -47,14 +46,12 @@ final class SharedFrameWriter {
             if fstat(fd, &statBuf) == 0 && statBuf.st_size == totalSize {
                 // File exists and is the exact size we need. Reuse it!
             } else {
-                // Size mismatch. Close and recreate.
                 Darwin.close(fd)
                 fd = -1
             }
         }
 
         if fd == -1 {
-            // Recreate file
             if FileManager.default.fileExists(atPath: path) {
                 try? FileManager.default.removeItem(atPath: path)
             }
@@ -73,7 +70,6 @@ final class SharedFrameWriter {
         
         defer { Darwin.close(fd) }
 
-        // mmap read-write shared
         let ptr = mmap(nil, totalSize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0)
         guard let ptr, ptr != MAP_FAILED else {
             throw WriterError.mmapFailed(errno: errno)
@@ -81,7 +77,7 @@ final class SharedFrameWriter {
 
         mapping = ptr
         mappingSize = totalSize
-        frameSize = bufSize
+        frameSize = 0 // Not used anymore
 
         let hdr = ptr.bindMemory(to: MSCStreamHeader.self, capacity: 1)
         if needsInit {
@@ -89,14 +85,15 @@ final class SharedFrameWriter {
             hdr.pointee.version      = MSC_VERSION
             hdr.pointee.width        = UInt32(width)
             hdr.pointee.height       = UInt32(height)
-            hdr.pointee.bytesPerRow  = UInt32(bytesPerRow)
+            hdr.pointee.controlHead  = 0
+            hdr.pointee.controlTail  = 0
             hdr.pointee.pixelFormat  = MSC_PIXEL_FORMAT
-            hdr.pointee.bufferCount  = MSC_BUFFER_COUNT
-            hdr.pointee.bufferSize   = UInt32(bufSize)
-            // sequence, publishedIndex, framesProduced remain 0 from ftruncate.
+            hdr.pointee.ioSurfaceID  = 0
+            hdr.pointee.sequence     = 0
+            hdr.pointee.publishedIndex = 0
+            hdr.pointee.framesProduced = 0
+            memset(&hdr.pointee.ioSurfaceIDs, 0, MemoryLayout.size(ofValue: hdr.pointee.ioSurfaceIDs))
         } else {
-            // If we reused the file, the previous FrameHost might have died in the middle of a write.
-            // If the sequence lock is odd (write in progress), force it to even.
             let seq = msc_seq_load_acquire(ptr)
             if seq % 2 != 0 {
                 msc_seq_store_release(ptr, seq &+ 1)
@@ -104,7 +101,6 @@ final class SharedFrameWriter {
         }
     }
 
-    /// Closes the mapping and removes the shared file.
     func close() {
         if let mapping {
             munmap(mapping, mappingSize)
@@ -115,90 +111,79 @@ final class SharedFrameWriter {
 
     // MARK: - Publishing
 
-    /// Publishes one BGRA frame using the sequence-lock algorithm.
-    /// - Parameter frame: The BGRA frame to publish.
-    /// - Parameter pts:   Presentation timestamp in nanoseconds (monotonic).
     func publish(frame: BGRAFrame, pts: UInt64) throws {
-        guard let base = mapping else {
-            throw WriterError.notOpen
+        // Create an IOSurface-backed CVPixelBuffer
+        let attrs = [
+            kCVPixelBufferIOSurfacePropertiesKey: [
+                "IOSurfaceIsGlobal": true
+            ] as [String: Any]
+        ] as CFDictionary
+        
+        var pixelBuffer: CVPixelBuffer?
+        CVPixelBufferCreate(
+            kCFAllocatorDefault,
+            frame.width,
+            frame.height,
+            kCVPixelFormatType_32BGRA,
+            attrs,
+            &pixelBuffer
+        )
+        
+        guard let pixelBuffer else { return }
+        
+        CVPixelBufferLockBaseAddress(pixelBuffer, [])
+        if let baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer) {
+            frame.data.withUnsafeBytes { ptr in
+                if let src = ptr.baseAddress {
+                    let dstBPR = CVPixelBufferGetBytesPerRow(pixelBuffer)
+                    let srcBPR = frame.width * 4
+                    if dstBPR == srcBPR {
+                        memcpy(baseAddress, src, frame.data.count)
+                    } else {
+                        let h = frame.height
+                        for row in 0..<h {
+                            memcpy(baseAddress.advanced(by: row * dstBPR),
+                                   src.advanced(by: row * srcBPR),
+                                   srcBPR)
+                        }
+                    }
+                }
+            }
         }
-
-        // Pick a buffer index that is NOT currently the published one.
-        let currentPublished = Int(msc_idx_load_acquire(base))
-        let writeIndex = (currentPublished + 1) % 3
-
-        // --- Sequence lock: begin write (seq → odd) ---
-        // Canonical pattern: read seq, store seq+1 (odd = write in progress).
-        // On completion store seq+2 (even, advanced). Never re-read in between.
-        let seqBefore = msc_seq_load_acquire(base)
-        msc_seq_store_release(base, seqBefore &+ 1)
-
-        // --- Copy frame data ---
-        let dest = base.advanced(by: 128 + writeIndex * frameSize)
-        _ = frame.data.withUnsafeBytes { src in
-            memcpy(dest, src.baseAddress!, frame.data.count)
-        }
-
-        // --- Update presentation timestamp (plain write, protected by seq lock) ---
-        let hdr = base.bindMemory(to: MSCStreamHeader.self, capacity: 1)
-        hdr.pointee.presentationTimeNs = pts
-
-        // --- Publish buffer index ---
-        msc_idx_store_relaxed(base, UInt32(writeIndex))
-
-        // --- Sequence lock: end write (seq → even, advanced by 2 total) ---
-        msc_seq_store_release(base, seqBefore &+ 2)
-
-        // --- Increment frame counter ---
-        _ = msc_fp_fetch_add(base, 1)
+        CVPixelBufferUnlockBaseAddress(pixelBuffer, [])
+        
+        try publish(pixelBuffer: pixelBuffer, pts: pts)
     }
 
-    /// Publishes one BGRA frame directly from a CVPixelBuffer (zero-copy).
-    /// - Parameter pixelBuffer: A CVPixelBuffer (must be kCVPixelFormatType_32BGRA).
-    /// - Parameter pts:         Presentation timestamp in nanoseconds.
     func publish(pixelBuffer: CVPixelBuffer, pts: UInt64) throws {
         guard let base = mapping else {
             throw WriterError.notOpen
         }
 
-        // Lock the base address for reading
-        CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
-        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
-
-        guard let srcBaseAddress = CVPixelBufferGetBaseAddress(pixelBuffer) else {
+        let unmanagedSurface = CVPixelBufferGetIOSurface(pixelBuffer)
+        guard let surface = unmanagedSurface?.takeUnretainedValue() else {
             return
         }
+        let surfaceID = IOSurfaceGetID(surface)
 
         let currentPublished = Int(msc_idx_load_acquire(base))
         let writeIndex = (currentPublished + 1) % 3
 
+        // Retain the CVPixelBuffer to keep the IOSurface alive while the reader consumes it.
+        retainedBuffers[writeIndex] = pixelBuffer
+
         let seqBefore = msc_seq_load_acquire(base)
         msc_seq_store_release(base, seqBefore &+ 1)
 
-        // We must copy row-by-row to handle stride (bytesPerRow) differences
-        // between the camera's CVPixelBuffer and our shared memory.
-        let srcBPR = CVPixelBufferGetBytesPerRow(pixelBuffer)
-        let srcWidth = CVPixelBufferGetWidth(pixelBuffer)
-        let srcHeight = CVPixelBufferGetHeight(pixelBuffer)
-
         let hdr = base.bindMemory(to: MSCStreamHeader.self, capacity: 1)
-        let dstWidth = Int(hdr.pointee.width)
-        let dstHeight = Int(hdr.pointee.height)
-        let dstBPR = Int(hdr.pointee.bytesPerRow)
-
-        let copyWidth = min(srcWidth, dstWidth)
-        let copyHeight = min(srcHeight, dstHeight)
-        let bytesToCopy = copyWidth * 4
-
-        let destBase = base.advanced(by: 128 + writeIndex * frameSize)
-
-        for row in 0..<copyHeight {
-            let srcRow = srcBaseAddress.advanced(by: row * srcBPR)
-            let dstRow = destBase.advanced(by: row * dstBPR)
-            memcpy(dstRow, srcRow, bytesToCopy)
-        }
-
         hdr.pointee.presentationTimeNs = pts
+        
+        // Write the IOSurfaceID to the array
+        withUnsafeMutablePointer(to: &hdr.pointee.ioSurfaceIDs) { ptr in
+            ptr.withMemoryRebound(to: UInt32.self, capacity: 3) { arrayPtr in
+                arrayPtr[writeIndex] = surfaceID
+            }
+        }
 
         msc_idx_store_relaxed(base, UInt32(writeIndex))
         msc_seq_store_release(base, seqBefore &+ 2)
@@ -206,7 +191,29 @@ final class SharedFrameWriter {
         _ = msc_fp_fetch_add(base, 1)
     }
 
-    /// Returns the number of frames successfully published so far.
+    // MARK: - Control Channel
+
+    /// Polls the control ring buffer for new events.
+    func pollControlEvents() -> [MSCControlEvent] {
+        guard let base = mapping else { return [] }
+        var events = [MSCControlEvent]()
+        
+        let head = msc_ctl_head_load_acquire(base)
+        var tail = msc_ctl_tail_load_acquire(base)
+        
+        let capacity = UInt32(16)
+        let ringPtr = base.advanced(by: 128).bindMemory(to: MSCControlEvent.self, capacity: 16)
+        
+        while tail != head {
+            let event = ringPtr[Int(tail % capacity)]
+            events.append(event)
+            tail &+= 1
+        }
+        
+        msc_ctl_tail_store_release(base, tail)
+        return events
+    }
+
     var framesProduced: UInt64 {
         guard let base = mapping else { return 0 }
         return msc_fp_load_relaxed(base)

@@ -143,6 +143,8 @@ final class CameraSource: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
 
         let nowNs = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)
 
+        processControlEvents()
+
         do {
             switch scaleMode {
             case .fill:
@@ -165,6 +167,39 @@ final class CameraSource: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
             writeStatus(nowNs: nowNs)
         } catch {
             print("[CameraSource] Error publishing frame: \(error)")
+        }
+    }
+
+    private func processControlEvents() {
+        let MSC_CONTROL_EVENT_FLIP_CAMERA: UInt32 = 1
+        let MSC_CONTROL_EVENT_FOCUS_POINT: UInt32 = 2
+        
+        let events = writer.pollControlEvents()
+        for event in events {
+            if event.type == MSC_CONTROL_EVENT_FLIP_CAMERA {
+                print("[CameraSource] Received FlipCamera event! (Not yet mapped to Mac hardware)")
+            } else if event.type == MSC_CONTROL_EVENT_FOCUS_POINT {
+                print("[CameraSource] Received FocusPoint event: x=\(event.x), y=\(event.y)")
+                setFocusPoint(CGPoint(x: CGFloat(event.x), y: CGFloat(event.y)))
+            }
+        }
+    }
+
+    private func setFocusPoint(_ point: CGPoint) {
+        guard let device = activeDevice else { return }
+        do {
+            try device.lockForConfiguration()
+            if device.isFocusPointOfInterestSupported {
+                device.focusPointOfInterest = point
+                device.focusMode = .autoFocus
+            }
+            if device.isExposurePointOfInterestSupported {
+                device.exposurePointOfInterest = point
+                device.exposureMode = .autoExpose
+            }
+            device.unlockForConfiguration()
+        } catch {
+            print("[CameraSource] Could not lock device for focus point: \(error)")
         }
     }
 
@@ -191,7 +226,9 @@ final class CameraSource: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
         let attrs: [CFString: Any] = [
             kCVPixelBufferCGImageCompatibilityKey:          true,
             kCVPixelBufferCGBitmapContextCompatibilityKey:  true,
-            kCVPixelBufferIOSurfacePropertiesKey:           [:] as [CFString: Any],
+            kCVPixelBufferIOSurfacePropertiesKey: [
+                "IOSurfaceIsGlobal": true
+            ] as [String: Any],
         ]
         var outBuf: CVPixelBuffer?
         guard CVPixelBufferCreate(
@@ -278,7 +315,10 @@ final class CameraSource: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
         let videoOutput = AVCaptureVideoDataOutput()
         videoOutput.alwaysDiscardsLateVideoFrames = true
         videoOutput.videoSettings = [
-            kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA)
+            kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA),
+            kCVPixelBufferIOSurfacePropertiesKey as String: [
+                "IOSurfaceIsGlobal": true
+            ] // Request global IOSurface backing
         ]
         videoOutput.setSampleBufferDelegate(self, queue: captureQueue)
         guard session.canAddOutput(videoOutput) else { throw CameraError.cannotAddOutput }

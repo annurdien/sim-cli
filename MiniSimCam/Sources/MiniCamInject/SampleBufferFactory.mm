@@ -1,25 +1,20 @@
 // SampleBufferFactory.mm
-// Creates CVPixelBuffers and CMSampleBuffers from shared-memory frames.
-// Two code paths:
-//   1. sampleBufferFromSnapshot: — legacy, takes a pre-copied FrameSnapshot.
-//   2. sampleBufferFromReader:   — optimised, single-copy directly into CVPixelBuffer.
+// Creates CMSampleBuffers from shared-memory frames using IOSurface zero-copy.
 
 #import <AVFoundation/AVFoundation.h>
 #import <CoreMedia/CoreMedia.h>
 #import <CoreVideo/CoreVideo.h>
+#import <IOSurface/IOSurfaceRef.h>
 #import <mach/mach_time.h>
 #import "SampleBufferFactory.h"
 #import "SharedFrameReader.hpp"
 
-// ---------------------------------------------------------------------------
-// CVPixelBufferPool wrapper
-// ---------------------------------------------------------------------------
+extern "C" {
+    IOSurfaceRef IOSurfaceLookup(uint32_t csid);
+}
 
 @implementation MSCSampleBufferFactory {
-    CVPixelBufferPoolRef _pool;
     CMVideoFormatDescriptionRef _formatDesc;
-    uint32_t _poolWidth;
-    uint32_t _poolHeight;
     int32_t  _fps;
     CMTime   _frameDuration;
     CMTime   _startCMTime;
@@ -34,103 +29,53 @@
 }
 
 - (void)dealloc {
-    [self teardownPool];
-}
-
-- (void)teardownPool {
-    if (_pool)       { CVPixelBufferPoolRelease(_pool); _pool = nullptr; }
     if (_formatDesc) { CFRelease(_formatDesc); _formatDesc = nullptr; }
-    _poolWidth = 0; _poolHeight = 0;
-}
-
-/// Ensure the pixel-buffer pool matches the current frame dimensions.
-- (BOOL)ensurePoolWidth:(uint32_t)w height:(uint32_t)h {
-    if (_pool && _poolWidth == w && _poolHeight == h) return YES;
-    [self teardownPool];
-    _poolWidth  = w;
-    _poolHeight = h;
-
-    NSDictionary *attrs = @{
-        (NSString *)kCVPixelBufferPixelFormatTypeKey: @(kCVPixelFormatType_32BGRA),
-        (NSString *)kCVPixelBufferWidthKey:           @(w),
-        (NSString *)kCVPixelBufferHeightKey:          @(h),
-        (NSString *)kCVPixelBufferIOSurfacePropertiesKey: @{},
-        (NSString *)kCVPixelBufferCGImageCompatibilityKey: @YES,
-        (NSString *)kCVPixelBufferCGBitmapContextCompatibilityKey: @YES
-    };
-
-    CVReturn ret = CVPixelBufferPoolCreate(
-        kCFAllocatorDefault, nullptr,
-        (__bridge CFDictionaryRef)attrs,
-        &_pool
-    );
-    return ret == kCVReturnSuccess;
-}
-
-- (nullable CMSampleBufferRef)sampleBufferFromSnapshot:(const FrameSnapshot &)snap {
-    if (!snap.valid || snap.data.empty()) return nil;
-
-    const uint32_t w   = snap.width;
-    const uint32_t h   = snap.height;
-    const uint32_t bpr = snap.bytesPerRow;
-
-    if (![self ensurePoolWidth:w height:h]) return nil;
-
-    // --- Allocate pixel buffer from pool ---
-    CVPixelBufferRef pixBuf = nullptr;
-    if (CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, _pool, &pixBuf) != kCVReturnSuccess) {
-        return nil;
-    }
-
-    // --- Copy frame data row-by-row (source and destination may have different strides) ---
-    CVPixelBufferLockBaseAddress(pixBuf, 0);
-    uint8_t *dst   = (uint8_t *)CVPixelBufferGetBaseAddress(pixBuf);
-    size_t dstBPR  = CVPixelBufferGetBytesPerRow(pixBuf);
-    const uint8_t *src = snap.data.data();
-
-    for (uint32_t row = 0; row < h; ++row) {
-        memcpy(dst + row * dstBPR, src + row * bpr, (size_t)w * 4);
-    }
-    CVPixelBufferUnlockBaseAddress(pixBuf, 0);
-
-    return [self wrapPixelBuffer:pixBuf pts:snap.ptsNs];
 }
 
 - (nullable CMSampleBufferRef)sampleBufferFromReader:(SharedFrameReader *)reader {
     if (!reader || !reader->isOpen()) return nil;
 
-    // Read dimensions directly from the shm header — no pixel copy yet.
-    const MSCStreamHeader* hdr = reader->peekHeader();
-    if (!hdr || hdr->magic != MSC_MAGIC) return nil;
+    FrameInfo info = reader->getLatestFrameInfo();
+    // Only log occasionally to prevent spam, or just log if it's invalid or 0
+    if (!info.valid || info.ioSurfaceID == 0) {
+        static int dropCount = 0;
+        if (dropCount++ % 60 == 0) {
+            NSLog(@"[MiniCamInject] Dropped frame (valid=%d, ioSurfaceID=%u, fp=%llu)", info.valid, info.ioSurfaceID, info.framesProduced);
+        }
+        return nil;
+    }
 
-    const uint32_t w = hdr->width;
-    const uint32_t h = hdr->height;
-    if (w == 0 || h == 0) return nil;
-
-    if (![self ensurePoolWidth:w height:h]) return nil;
+    IOSurfaceRef surface = IOSurfaceLookup(info.ioSurfaceID);
+    if (!surface) {
+        NSLog(@"[MiniCamInject] IOSurfaceLookup failed for ID %u", info.ioSurfaceID);
+        return nil;
+    }
 
     CVPixelBufferRef pixBuf = nullptr;
-    if (CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, _pool, &pixBuf) != kCVReturnSuccess) {
+    CVReturn ret = CVPixelBufferCreateWithIOSurface(
+        kCFAllocatorDefault,
+        surface,
+        nullptr, // Let CoreVideo use default attributes
+        &pixBuf
+    );
+    
+    CFRelease(surface); // CVPixelBuffer retains it if needed
+    
+    if (ret != kCVReturnSuccess || !pixBuf) {
+        NSLog(@"[MiniCamInject] CVPixelBufferCreateWithIOSurface failed with error %d", ret);
         return nil;
     }
 
-    // Single pass: shm → CVPixelBuffer (no intermediate vector). The
-    // reader copies per row because its stream stride can differ from the
-    // pixel buffer pool's stride.
-    CVPixelBufferLockBaseAddress(pixBuf, 0);
-    void *dst       = CVPixelBufferGetBaseAddress(pixBuf);
-    size_t dstBPR   = CVPixelBufferGetBytesPerRow(pixBuf);
-    size_t dstTotal = dstBPR * h;
-
-    FrameInfo info = reader->copyLatestFrameInto(dst, dstBPR, dstTotal);
-    CVPixelBufferUnlockBaseAddress(pixBuf, 0);
-
-    if (!info.valid) {
-        CVPixelBufferRelease(pixBuf);
-        return nil;
+    CMSampleBufferRef sbuf = [self wrapPixelBuffer:pixBuf pts:info.ptsNs];
+    if (!sbuf) {
+        NSLog(@"[MiniCamInject] wrapPixelBuffer failed");
+    } else {
+        static int okCount = 0;
+        if (okCount++ % 60 == 0) {
+            NSLog(@"[MiniCamInject] wrapPixelBuffer success (seq=%llu)", info.framesProduced);
+        }
     }
-
-    return [self wrapPixelBuffer:pixBuf pts:info.ptsNs];
+    return sbuf;
 }
 
 /// Internal helper: wraps a CVPixelBuffer into a CMSampleBuffer.
