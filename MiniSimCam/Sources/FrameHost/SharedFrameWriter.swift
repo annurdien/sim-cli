@@ -34,31 +34,46 @@ final class SharedFrameWriter {
         close()
     }
 
-    /// Opens (or re-creates) the shared file and writes the stream header.
     func open(width: Int, height: Int) throws {
         let bytesPerRow = ImageSource.alignedBytesPerRow(width)
         let bufSize = bytesPerRow * height
         let totalSize = 128 + 3 * bufSize     // header (128 B) + 3 × frame
 
-        // Remove stale file if present.
-        if FileManager.default.fileExists(atPath: path) {
-            try FileManager.default.removeItem(atPath: path)
+        var fd = Darwin.open(path, O_RDWR)
+        var needsInit = false
+
+        if fd != -1 {
+            var statBuf = stat()
+            if fstat(fd, &statBuf) == 0 && statBuf.st_size == totalSize {
+                // File exists and is the exact size we need. Reuse it!
+            } else {
+                // Size mismatch. Close and recreate.
+                Darwin.close(fd)
+                fd = -1
+            }
         }
 
-        // Create and size the file.
-        guard FileManager.default.createFile(atPath: path, contents: nil) else {
-            throw WriterError.cannotCreateFile(path)
+        if fd == -1 {
+            // Recreate file
+            if FileManager.default.fileExists(atPath: path) {
+                try? FileManager.default.removeItem(atPath: path)
+            }
+            guard FileManager.default.createFile(atPath: path, contents: nil) else {
+                throw WriterError.cannotCreateFile(path)
+            }
+            fd = Darwin.open(path, O_RDWR)
+            guard fd != -1 else { throw WriterError.openFailed(path, errno: errno) }
+            
+            guard ftruncate(fd, off_t(totalSize)) == 0 else {
+                Darwin.close(fd)
+                throw WriterError.truncateFailed(errno: errno)
+            }
+            needsInit = true
         }
-        let fd = Darwin.open(path, O_RDWR)
-        guard fd != -1 else { throw WriterError.openFailed(path, errno: errno) }
+        
         defer { Darwin.close(fd) }
 
-        guard ftruncate(fd, off_t(totalSize)) == 0 else {
-            throw WriterError.truncateFailed(errno: errno)
-        }
-
-        // mmap read-write shared. ftruncate zeroes all bytes, so
-        // sequence=0 (even) and publishedIndex=0 are correct initial values.
+        // mmap read-write shared
         let ptr = mmap(nil, totalSize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0)
         guard let ptr, ptr != MAP_FAILED else {
             throw WriterError.mmapFailed(errno: errno)
@@ -68,17 +83,25 @@ final class SharedFrameWriter {
         mappingSize = totalSize
         frameSize = bufSize
 
-        // Write the non-atomic header fields directly (Swift can access these).
         let hdr = ptr.bindMemory(to: MSCStreamHeader.self, capacity: 1)
-        hdr.pointee.magic        = MSC_MAGIC
-        hdr.pointee.version      = MSC_VERSION
-        hdr.pointee.width        = UInt32(width)
-        hdr.pointee.height       = UInt32(height)
-        hdr.pointee.bytesPerRow  = UInt32(bytesPerRow)
-        hdr.pointee.pixelFormat  = MSC_PIXEL_FORMAT
-        hdr.pointee.bufferCount  = MSC_BUFFER_COUNT
-        hdr.pointee.bufferSize   = UInt32(bufSize)
-        // sequence, publishedIndex, framesProduced remain 0 from ftruncate.
+        if needsInit {
+            hdr.pointee.magic        = MSC_MAGIC
+            hdr.pointee.version      = MSC_VERSION
+            hdr.pointee.width        = UInt32(width)
+            hdr.pointee.height       = UInt32(height)
+            hdr.pointee.bytesPerRow  = UInt32(bytesPerRow)
+            hdr.pointee.pixelFormat  = MSC_PIXEL_FORMAT
+            hdr.pointee.bufferCount  = MSC_BUFFER_COUNT
+            hdr.pointee.bufferSize   = UInt32(bufSize)
+            // sequence, publishedIndex, framesProduced remain 0 from ftruncate.
+        } else {
+            // If we reused the file, the previous FrameHost might have died in the middle of a write.
+            // If the sequence lock is odd (write in progress), force it to even.
+            let seq = msc_seq_load_acquire(ptr)
+            if seq % 2 != 0 {
+                msc_seq_store_release(ptr, seq &+ 1)
+            }
+        }
     }
 
     /// Closes the mapping and removes the shared file.
