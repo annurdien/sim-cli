@@ -80,7 +80,6 @@ func injectorDylib(mscDir string) string {
 	}
 	return filepath.Join(mscDir, ".build", "injector", "MiniCamInject.dylib")
 }
-func buildScript(mscDir string) string { return filepath.Join(mscDir, "Scripts", "build.sh") }
 
 func findRunningIOSSimulator(deviceID string) (udid, name string, err error) {
 	udid, name, isAndroid, err := FindRunningDevice(deviceID)
@@ -152,38 +151,10 @@ shared memory. A dylib (MiniCamInject) loaded into your simulator app reads
 those frames and delivers them as CMSampleBuffer callbacks.
 
 Quick start:
-  sim cam build
   sim cam start --image test.png
   sim cam launch --bundle-id com.example.MyApp
   sim cam status
   sim cam stop`,
-}
-
-// ---------------------------------------------------------------------------
-// sim cam build
-// ---------------------------------------------------------------------------
-
-var camBuildCmd = &cobra.Command{
-	Use:   "build",
-	Short: "Build FrameHost and MiniCamInject.dylib",
-	Long:  `Compiles the Swift FrameHost binary and the iOS Simulator injector dylib.`,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		if runtime.GOOS != DarwinOS {
-			return fmt.Errorf("cam build is only supported on macOS")
-		}
-		mscDir := miniSimCamDir()
-		script := buildScript(mscDir)
-		if _, err := os.Stat(script); err != nil {
-			return fmt.Errorf("build script not found at %s — is MiniSimCam/ present?", script)
-		}
-
-		return RunSpinner("Building MiniSimCam (FrameHost + MiniCamInject)…", func() error {
-			c := exec.Command("/bin/bash", script, mscDir)
-			c.Stdout = os.Stdout
-			c.Stderr = os.Stderr
-			return c.Run()
-		})
-	},
 }
 
 // ---------------------------------------------------------------------------
@@ -594,11 +565,9 @@ func stopFrameHost(udid string) error {
 // ---------------------------------------------------------------------------
 
 func init() {
-	// cam-level flag: --msc-dir override
+	// cam-level flag: --msc-dir override (hidden for end users)
 	camCmd.PersistentFlags().StringVar(&camMscDir, "msc-dir", "", "Path to MiniSimCam directory (default: auto-detected)")
-
-	// build
-	camCmd.AddCommand(camBuildCmd)
+	_ = camCmd.PersistentFlags().MarkHidden("msc-dir")
 
 	// start
 	camStartCmd.Flags().StringVar(&camStartImage, "image", "", "Path to PNG or JPEG source image")
