@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -44,10 +45,39 @@ func miniSimCamDir() string {
 func shmPath(udid string) string        { return fmt.Sprintf("/tmp/minisimcam.%s.frames", udid) }
 func statusFilePath(udid string) string { return fmt.Sprintf("/tmp/minisimcam.%s.status", udid) }
 func pidFilePath(udid string) string    { return fmt.Sprintf("/tmp/minisimcam.%s.pid", udid) }
+// resolveEmbeddedBinDir returns the directory containing extracted embedded
+// binaries, or "" if the embedded assets are stubs (dev builds without cam).
+// The result is cached after the first successful extraction.
+var (
+	embeddedBinDirOnce  sync.Once
+	embeddedBinDirValue string
+)
+
+func resolveEmbeddedBinDir() string {
+	embeddedBinDirOnce.Do(func() {
+		if binDir, err := ensureExtractedAssets(); err == nil {
+			embeddedBinDirValue = binDir
+		}
+	})
+	return embeddedBinDirValue
+}
+
 func frameHostBin(mscDir string) string {
+	if binDir := resolveEmbeddedBinDir(); binDir != "" {
+		extracted := filepath.Join(binDir, "FrameHost")
+		if _, err := os.Stat(extracted); err == nil {
+			return extracted
+		}
+	}
 	return filepath.Join(mscDir, ".build", "release", "FrameHost")
 }
 func injectorDylib(mscDir string) string {
+	if binDir := resolveEmbeddedBinDir(); binDir != "" {
+		extracted := filepath.Join(binDir, "MiniCamInject.dylib")
+		if _, err := os.Stat(extracted); err == nil {
+			return extracted
+		}
+	}
 	return filepath.Join(mscDir, ".build", "injector", "MiniCamInject.dylib")
 }
 func buildScript(mscDir string) string { return filepath.Join(mscDir, "Scripts", "build.sh") }
@@ -223,7 +253,7 @@ Examples:
 		mscDir := miniSimCamDir()
 		bin := frameHostBin(mscDir)
 		if _, err := os.Stat(bin); err != nil {
-			return fmt.Errorf("FrameHost not built — run 'sim cam build' first")
+			return fmt.Errorf("FrameHost not found — run 'sim cam build' first (or use a release build with embedded binaries)")
 		}
 
 		// Kill any existing FrameHost for this UDID.
@@ -311,7 +341,7 @@ Example:
 		mscDir := miniSimCamDir()
 		bin := frameHostBin(mscDir)
 		if _, err := os.Stat(bin); err != nil {
-			return fmt.Errorf("FrameHost not built — run 'sim cam build' first")
+			return fmt.Errorf("FrameHost not found — run 'sim cam build' first (or use a release build with embedded binaries)")
 		}
 		c := exec.Command(bin, "--list-cameras", "--udid", "00000000-0000-0000-0000-000000000000")
 		c.Stdout = os.Stdout
@@ -355,7 +385,7 @@ Example:
 		mscDir := miniSimCamDir()
 		dylib := injectorDylib(mscDir)
 		if _, err := os.Stat(dylib); err != nil {
-			return fmt.Errorf("MiniCamInject.dylib not found — run 'sim cam build' first")
+			return fmt.Errorf("MiniCamInject.dylib not found — run 'sim cam build' first (or use a release build with embedded binaries)")
 		}
 
 		shm := shmPath(udid)
