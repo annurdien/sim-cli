@@ -3,6 +3,7 @@
 
 import Foundation
 import Darwin
+import CoreVideo
 import MiniSimCamShared
 
 /// Writes BGRA frames into a memory-mapped triple-buffer file.
@@ -126,6 +127,59 @@ final class SharedFrameWriter {
         msc_seq_store_release(base, seqBefore &+ 2)
 
         // --- Increment frame counter ---
+        _ = msc_fp_fetch_add(base, 1)
+    }
+
+    /// Publishes one BGRA frame directly from a CVPixelBuffer (zero-copy).
+    /// - Parameter pixelBuffer: A CVPixelBuffer (must be kCVPixelFormatType_32BGRA).
+    /// - Parameter pts:         Presentation timestamp in nanoseconds.
+    func publish(pixelBuffer: CVPixelBuffer, pts: UInt64) throws {
+        guard let base = mapping else {
+            throw WriterError.notOpen
+        }
+
+        // Lock the base address for reading
+        CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
+
+        guard let srcBaseAddress = CVPixelBufferGetBaseAddress(pixelBuffer) else {
+            return
+        }
+
+        let currentPublished = Int(msc_idx_load_acquire(base))
+        let writeIndex = (currentPublished + 1) % 3
+
+        let seqBefore = msc_seq_load_acquire(base)
+        msc_seq_store_release(base, seqBefore &+ 1)
+
+        // We must copy row-by-row to handle stride (bytesPerRow) differences
+        // between the camera's CVPixelBuffer and our shared memory.
+        let srcBPR = CVPixelBufferGetBytesPerRow(pixelBuffer)
+        let srcWidth = CVPixelBufferGetWidth(pixelBuffer)
+        let srcHeight = CVPixelBufferGetHeight(pixelBuffer)
+
+        let hdr = base.bindMemory(to: MSCStreamHeader.self, capacity: 1)
+        let dstWidth = Int(hdr.pointee.width)
+        let dstHeight = Int(hdr.pointee.height)
+        let dstBPR = Int(hdr.pointee.bytesPerRow)
+
+        let copyWidth = min(srcWidth, dstWidth)
+        let copyHeight = min(srcHeight, dstHeight)
+        let bytesToCopy = copyWidth * 4
+
+        let destBase = base.advanced(by: 128 + writeIndex * frameSize)
+
+        for row in 0..<copyHeight {
+            let srcRow = srcBaseAddress.advanced(by: row * srcBPR)
+            let dstRow = destBase.advanced(by: row * dstBPR)
+            memcpy(dstRow, srcRow, bytesToCopy)
+        }
+
+        hdr.pointee.presentationTimeNs = pts
+
+        msc_idx_store_relaxed(base, UInt32(writeIndex))
+        msc_seq_store_release(base, seqBefore &+ 2)
+
         _ = msc_fp_fetch_add(base, 1)
     }
 

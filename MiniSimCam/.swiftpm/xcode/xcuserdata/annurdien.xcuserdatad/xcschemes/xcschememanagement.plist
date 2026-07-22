@@ -25,5 +25,33 @@
 			<integer>2</integer>
 		</dict>
 	</dict>
+	<key>SuppressBuildableAutocreation</key>
+	<dict>
+		<key>FrameHost</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>FrameTransportTests</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>MiniCamInject</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>MiniSimCamShared</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>ProtocolTests</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+	</dict>
 </dict>
 </plist>

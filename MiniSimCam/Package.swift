@@ -47,7 +47,16 @@ let package = Package(
                 "MiniSimCamShared",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ],
-            path: "Sources/FrameHost"
+            path: "Sources/FrameHost",
+            exclude: ["Info.plist"],
+            linkerSettings: [
+                .unsafeFlags([
+                    "-Xlinker", "-sectcreate",
+                    "-Xlinker", "__TEXT",
+                    "-Xlinker", "__info_plist",
+                    "-Xlinker", "Sources/FrameHost/Info.plist"
+                ])
+            ]
         ),
 
         // ------------------------------------------------------------------

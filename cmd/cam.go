@@ -103,6 +103,7 @@ var camBuildCmd = &cobra.Command{
 var (
 	camStartImage  string
 	camStartBars   bool
+	camStartCamera bool
 	camStartWidth  int
 	camStartHeight int
 	camStartFPS    int
@@ -122,8 +123,8 @@ Examples:
 		if runtime.GOOS != DarwinOS {
 			return fmt.Errorf("cam start is only supported on macOS")
 		}
-		if camStartImage == "" && !camStartBars {
-			return fmt.Errorf("provide --image <path> or --bars")
+		if camStartImage == "" && !camStartBars && !camStartCamera {
+			return fmt.Errorf("provide --image <path>, --bars, or --camera")
 		}
 
 		// Resolve UDID.
@@ -149,6 +150,8 @@ Examples:
 		}
 		if camStartBars {
 			hostArgs = append(hostArgs, "--bars")
+		} else if camStartCamera {
+			hostArgs = append(hostArgs, "--camera")
 		} else {
 			absImage, err := filepath.Abs(camStartImage)
 			if err != nil {
@@ -160,8 +163,11 @@ Examples:
 		c := exec.Command(bin, hostArgs...)
 		c.Stdout = os.Stdout
 		c.Stderr = os.Stderr
-		// Detach from the terminal so FrameHost survives terminal close.
-		c.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+		// Detach from the terminal so FrameHost survives terminal close,
+		// EXCEPT when using the camera, as detaching breaks TCC (camera) permission inheritance.
+		if !camStartCamera {
+			c.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+		}
 		if err := c.Start(); err != nil {
 			return fmt.Errorf("failed to start FrameHost: %w", err)
 		}
@@ -172,6 +178,8 @@ Examples:
 		source := camStartImage
 		if camStartBars {
 			source = "color-bars"
+		} else if camStartCamera {
+			source = "mac-camera"
 		}
 		PrintSuccess(fmt.Sprintf(
 			"FrameHost started — source=%s %dx%d @ %d fps (simulator %s)",
@@ -403,6 +411,7 @@ func init() {
 	// start
 	camStartCmd.Flags().StringVar(&camStartImage, "image", "", "Path to PNG or JPEG source image")
 	camStartCmd.Flags().BoolVar(&camStartBars, "bars", false, "Use synthetic SMPTE color-bar image")
+	camStartCmd.Flags().BoolVar(&camStartCamera, "camera", false, "Use the Mac's physical camera as a live source")
 	camStartCmd.Flags().IntVar(&camStartWidth, "width", DefaultCamWidth, "Frame width in pixels")
 	camStartCmd.Flags().IntVar(&camStartHeight, "height", DefaultCamHeight, "Frame height in pixels")
 	camStartCmd.Flags().IntVar(&camStartFPS, "fps", DefaultCamFPS, "Frames per second (1-120)")
