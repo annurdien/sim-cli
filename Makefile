@@ -1,4 +1,4 @@
-.PHONY: build clean install test test-race test-coverage lint fmt vet check help
+.PHONY: build build-all clean install test test-race test-coverage lint fmt vet check help cam-build cam-clean
 
 # Default target
 all: build
@@ -7,15 +7,28 @@ all: build
 VERSION := $(shell grep 'version:' config.yaml | awk '{print $$2}' | tr -d '"')
 LDFLAGS := -ldflags "-X github.com/annurdien/sim-cli/cmd.Version=$(VERSION)"
 
-# Build the application
+UNAME_S := $(shell uname -s)
+
+# Build the application (with embedded cam binaries on macOS)
 build:
+ifeq ($(UNAME_S),Darwin)
+	cd MiniSimCam && ./Scripts/build.sh
+	go build -tags cam_embed $(LDFLAGS) -o sim
+else
 	go build $(LDFLAGS) -o sim
+endif
 
 # Build for multiple platforms
 build-all:
 	mkdir -p dist
+ifeq ($(UNAME_S),Darwin)
+	cd MiniSimCam && ./Scripts/build.sh
+	GOOS=darwin GOARCH=amd64 go build -tags cam_embed $(LDFLAGS) -o dist/sim-darwin-amd64
+	GOOS=darwin GOARCH=arm64 go build -tags cam_embed $(LDFLAGS) -o dist/sim-darwin-arm64
+else
 	GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o dist/sim-darwin-amd64
 	GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) -o dist/sim-darwin-arm64
+endif
 	GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o dist/sim-linux-amd64
 	GOOS=windows GOARCH=amd64 go build $(LDFLAGS) -o dist/sim-windows-amd64.exe
 
@@ -23,6 +36,7 @@ build-all:
 clean:
 	rm -f sim
 	rm -rf dist/
+	rm -rf cmd/assets/
 	rm -f coverage.out coverage.html
 
 # Build MiniSimCam (FrameHost + MiniCamInject dylib)
@@ -33,6 +47,7 @@ cam-build:
 cam-clean:
 	cd MiniSimCam && swift package clean
 	rm -rf MiniSimCam/.build/injector
+	rm -rf cmd/assets/
 
 # Install dependencies
 deps:

@@ -50,6 +50,7 @@ MiniSimCam/Example/CameraPreviewApp/build/
 MiniSimCam/Example/CameraPreviewApp/module_cache/
 MiniSimCam/module_cache/
 module_cache/
+cmd/assets/
 
 # Xcode user state files (never commit)
 **/*.xcuserstate

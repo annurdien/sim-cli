@@ -4,7 +4,14 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="${1:-"$SCRIPT_DIR/.."}"
+PROJECT_DIR="${1:-"$SCRIPT_DIR/.."}"  # MiniSimCam root
+
+# Resolve repo root robustly: prefer git, fall back to PROJECT_DIR/..
+if REPO_ROOT="$(git -C "${PROJECT_DIR}" rev-parse --show-toplevel 2>/dev/null)"; then
+  : # already set
+else
+  REPO_ROOT="$(cd "${PROJECT_DIR}/.." && pwd)"
+fi
 
 cd "$PROJECT_DIR"
 
@@ -106,7 +113,12 @@ lipo -create \
     "${BUILD_DIR}/MiniCamInject_x86_64.dylib" \
     -output "${BUILD_DIR}/MiniCamInject.dylib"
 
-echo "   OK MiniCamInject.dylib -> ${BUILD_DIR}/MiniCamInject.dylib"
+# Copy binaries to cmd/assets for go:embed
+ASSETS_DIR="${REPO_ROOT}/cmd/assets"
+mkdir -p "${ASSETS_DIR}"
+cp "${FRAME_HOST_BIN}" "${ASSETS_DIR}/FrameHost"
+cp "${BUILD_DIR}/MiniCamInject.dylib" "${ASSETS_DIR}/MiniCamInject.dylib"
+echo "   OK Copied assets to ${ASSETS_DIR}"
 
 echo ""
 echo "=================================================="
