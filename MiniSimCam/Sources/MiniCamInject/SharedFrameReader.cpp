@@ -156,7 +156,7 @@ bool SharedFrameReader::isProducerStale() const {
     return (monoNs() - hdr->presentationTimeNs) > MSC_STALE_THRESHOLD_NS;
 }
 
-FrameInfo SharedFrameReader::copyLatestFrameInto(void* dst, size_t dstSize) {
+FrameInfo SharedFrameReader::copyLatestFrameInto(void* dst, size_t dstBytesPerRow, size_t dstSize) {
     FrameInfo info;
     if (!mapping_ || !dst) return info;
 
@@ -168,7 +168,7 @@ FrameInfo SharedFrameReader::copyLatestFrameInto(void* dst, size_t dstSize) {
     const uint32_t w       = hdr->width;
     const uint32_t h       = hdr->height;
 
-    if (dstSize < bufSize) return info;   // Caller buffer too small.
+    if (dstBytesPerRow < bpr || dstSize < dstBytesPerRow * h) return info;
 
     auto* seqAtomic = atomicAt<uint64_t>(mapping_, kOffSequence);
     auto* idxAtomic = atomicAt<uint32_t>(mapping_, kOffPublishedIndex);
@@ -188,9 +188,16 @@ FrameInfo SharedFrameReader::copyLatestFrameInto(void* dst, size_t dstSize) {
 
         if (idx >= MSC_BUFFER_COUNT) break;
 
-        const void* src = msc_frame_ptr(mapping_, bufSize, idx);
-        // Single copy: mmap → caller's buffer (typically a CVPixelBuffer).
-        std::memcpy(dst, src, bufSize);
+        const uint8_t* src = static_cast<const uint8_t*>(
+            msc_frame_ptr(mapping_, bufSize, idx)
+        );
+        uint8_t* out = static_cast<uint8_t*>(dst);
+        // The stream and CVPixelBuffer may use different strides. Copy each
+        // source row into the destination row rather than treating both as a
+        // contiguous image.
+        for (uint32_t row = 0; row < h; ++row) {
+            std::memcpy(out + row * dstBytesPerRow, src + row * bpr, bpr);
+        }
 
         uint64_t seqB = seqAtomic->load(std::memory_order_acquire);
         if (seqA != seqB) continue;   // Torn read — retry.

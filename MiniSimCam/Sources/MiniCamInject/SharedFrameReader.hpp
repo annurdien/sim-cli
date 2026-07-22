@@ -60,10 +60,11 @@ public:
     FrameSnapshot copyLatestFrame();
 
     /// Zero-copy path: copy the latest frame directly into `dst` (caller-allocated).
-    /// `dstSize` must be >= bytesPerRow * height from the shm header.
+    /// `dstBytesPerRow` describes the caller's row stride and must be at least
+    /// the stream stride. `dstSize` must cover dstBytesPerRow * height.
     /// Returns metadata; returns invalid FrameInfo if the header is corrupt or
     /// the buffer is too small. Eliminates the intermediate std::vector allocation.
-    FrameInfo copyLatestFrameInto(void* dst, size_t dstSize);
+    FrameInfo copyLatestFrameInto(void* dst, size_t dstBytesPerRow, size_t dstSize);
 
     /// Check whether the producer has gone stale (no update within MSC_STALE_THRESHOLD_NS).
     bool isProducerStale() const;

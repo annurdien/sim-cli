@@ -41,12 +41,72 @@ func miniSimCamDir() string {
 	return filepath.Join(cwd, "MiniSimCam")
 }
 
-func shmPath(udid string) string         { return fmt.Sprintf("/tmp/minisimcam.%s.frames", udid) }
-func statusFilePath(udid string) string  { return fmt.Sprintf("/tmp/minisimcam.%s.status", udid) }
-func pidFilePath(udid string) string     { return fmt.Sprintf("/tmp/minisimcam.%s.pid", udid) }
-func frameHostBin(mscDir string) string  { return filepath.Join(mscDir, ".build", "release", "FrameHost") }
-func injectorDylib(mscDir string) string { return filepath.Join(mscDir, ".build", "injector", "MiniCamInject.dylib") }
-func buildScript(mscDir string) string   { return filepath.Join(mscDir, "Scripts", "build.sh") }
+func shmPath(udid string) string        { return fmt.Sprintf("/tmp/minisimcam.%s.frames", udid) }
+func statusFilePath(udid string) string { return fmt.Sprintf("/tmp/minisimcam.%s.status", udid) }
+func pidFilePath(udid string) string    { return fmt.Sprintf("/tmp/minisimcam.%s.pid", udid) }
+func frameHostBin(mscDir string) string {
+	return filepath.Join(mscDir, ".build", "release", "FrameHost")
+}
+func injectorDylib(mscDir string) string {
+	return filepath.Join(mscDir, ".build", "injector", "MiniCamInject.dylib")
+}
+func buildScript(mscDir string) string { return filepath.Join(mscDir, "Scripts", "build.sh") }
+
+func findRunningIOSSimulator(deviceID string) (udid, name string, err error) {
+	udid, name, isAndroid, err := FindRunningDevice(deviceID)
+	if err != nil || udid == "" {
+		return "", "", err
+	}
+	if isAndroid {
+		return "", "", fmt.Errorf("MiniSimCam only supports booted iOS Simulators, not Android emulators")
+	}
+	return udid, name, nil
+}
+
+// waitForFrameHostReady rejects immediate FrameHost failures (for example an
+// invalid camera ID) instead of printing a misleading successful start.
+func waitForFrameHostReady(c *exec.Cmd, statusPath string) error {
+	exited := make(chan error, 1)
+	go func() { exited <- c.Wait() }()
+
+	deadline := time.NewTimer(5 * time.Second)
+	defer deadline.Stop()
+	ticker := time.NewTicker(50 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case err := <-exited:
+			if err == nil {
+				return fmt.Errorf("FrameHost exited during startup")
+			}
+			return fmt.Errorf("FrameHost failed during startup: %w", err)
+		case <-ticker.C:
+			data, err := os.ReadFile(statusPath)
+			if err != nil {
+				continue
+			}
+			var status camFrameLoopStatus
+			if json.Unmarshal(data, &status) == nil && status.HostPID == int32(c.Process.Pid) {
+				return nil
+			}
+		case <-deadline.C:
+			return fmt.Errorf("FrameHost did not become ready within 5 seconds")
+		}
+	}
+}
+
+func frameHostFPS(udid string) int {
+	data, err := os.ReadFile(statusFilePath(udid))
+	if err != nil {
+		return DefaultCamFPS
+	}
+	var status camFrameLoopStatus
+	if err := json.Unmarshal(data, &status); err != nil || status.FPS < 1 || status.FPS > 120 {
+		return DefaultCamFPS
+	}
+	return status.FPS
+}
 
 // ---------------------------------------------------------------------------
 // cam command group
@@ -101,13 +161,15 @@ var camBuildCmd = &cobra.Command{
 // ---------------------------------------------------------------------------
 
 var (
-	camStartImage  string
-	camStartBars   bool
-	camStartCamera bool
-	camStartWidth  int
-	camStartHeight int
-	camStartFPS    int
-	camStartDevice string
+	camStartImage     string
+	camStartBars      bool
+	camStartCamera    bool
+	camStartCameraID  string
+	camStartScaleMode string
+	camStartWidth     int
+	camStartHeight    int
+	camStartFPS       int
+	camStartDevice    string
 )
 
 var camStartCmd = &cobra.Command{
@@ -118,17 +180,42 @@ var camStartCmd = &cobra.Command{
 Examples:
   sim cam start --image ./test-card.png
   sim cam start --bars --width 1920 --height 1080 --fps 60
+  sim cam start --camera
+  sim cam start --camera --camera-id "iPhone"
   sim cam start --image qr.png --device <UDID>`,
+
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if runtime.GOOS != DarwinOS {
 			return fmt.Errorf("cam start is only supported on macOS")
 		}
-		if camStartImage == "" && !camStartBars && !camStartCamera {
-			return fmt.Errorf("provide --image <path>, --bars, or --camera")
+		sourceCount := 0
+		if camStartImage != "" {
+			sourceCount++
+		}
+		if camStartBars {
+			sourceCount++
+		}
+		if camStartCamera {
+			sourceCount++
+		}
+		if sourceCount != 1 {
+			return fmt.Errorf("provide exactly one of --image <path>, --bars, or --camera")
+		}
+		if camStartWidth <= 0 || camStartHeight <= 0 || camStartWidth > 3840 || camStartHeight > 3840 {
+			return fmt.Errorf("--width and --height must be between 1 and 3840")
+		}
+		if camStartFPS < 1 || camStartFPS > 120 {
+			return fmt.Errorf("--fps must be between 1 and 120")
+		}
+		if camStartCameraID != "" && !camStartCamera {
+			return fmt.Errorf("--camera-id requires --camera")
+		}
+		if cmd.Flags().Changed("scale-mode") && !camStartCamera {
+			return fmt.Errorf("--scale-mode requires --camera")
 		}
 
 		// Resolve UDID.
-		udid, _, _, err := FindRunningDevice(camStartDevice)
+		udid, _, err := findRunningIOSSimulator(camStartDevice)
 		if err != nil || udid == "" {
 			return fmt.Errorf("no booted iOS simulator found — boot one first (%w)", err)
 		}
@@ -140,7 +227,10 @@ Examples:
 		}
 
 		// Kill any existing FrameHost for this UDID.
-		_ = stopFrameHost(udid)
+		if err := stopFrameHost(udid); err != nil {
+			return err
+		}
+		_ = os.Remove(statusFilePath(udid))
 
 		hostArgs := []string{
 			"--udid", udid,
@@ -152,6 +242,12 @@ Examples:
 			hostArgs = append(hostArgs, "--bars")
 		} else if camStartCamera {
 			hostArgs = append(hostArgs, "--camera")
+			if camStartCameraID != "" {
+				hostArgs = append(hostArgs, "--camera-id", camStartCameraID)
+			}
+			if camStartScaleMode != "" {
+				hostArgs = append(hostArgs, "--scale-mode", camStartScaleMode)
+			}
 		} else {
 			absImage, err := filepath.Abs(camStartImage)
 			if err != nil {
@@ -172,20 +268,55 @@ Examples:
 			return fmt.Errorf("failed to start FrameHost: %w", err)
 		}
 
-		// Give it a moment to write the PID file before returning.
-		time.Sleep(500 * time.Millisecond)
+		if err := waitForFrameHostReady(c, statusFilePath(udid)); err != nil {
+			return err
+		}
 
 		source := camStartImage
 		if camStartBars {
 			source = "color-bars"
 		} else if camStartCamera {
-			source = "mac-camera"
+			if camStartCameraID != "" {
+				source = camStartCameraID
+			} else {
+				source = "mac-camera (default)"
+			}
 		}
 		PrintSuccess(fmt.Sprintf(
 			"FrameHost started — source=%s %dx%d @ %d fps (simulator %s)",
 			source, camStartWidth, camStartHeight, camStartFPS, udid,
 		))
 		return nil
+	},
+}
+
+// ---------------------------------------------------------------------------
+// sim cam list
+// ---------------------------------------------------------------------------
+
+var camListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List all available cameras on this Mac",
+	Long: `Enumerate video capture devices available to FrameHost.
+Includes built-in FaceTime camera, Continuity Camera (iPhone/iPad), and external USB cameras.
+
+Requires FrameHost to be built first (sim cam build).
+
+Example:
+  sim cam list`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if runtime.GOOS != DarwinOS {
+			return fmt.Errorf("cam list is only supported on macOS")
+		}
+		mscDir := miniSimCamDir()
+		bin := frameHostBin(mscDir)
+		if _, err := os.Stat(bin); err != nil {
+			return fmt.Errorf("FrameHost not built — run 'sim cam build' first")
+		}
+		c := exec.Command(bin, "--list-cameras", "--udid", "00000000-0000-0000-0000-000000000000")
+		c.Stdout = os.Stdout
+		c.Stderr = os.Stderr
+		return c.Run()
 	},
 }
 
@@ -216,7 +347,7 @@ Example:
 			return fmt.Errorf("--bundle-id is required")
 		}
 
-		udid, _, _, err := FindRunningDevice(camLaunchDevice)
+		udid, _, err := findRunningIOSSimulator(camLaunchDevice)
 		if err != nil || udid == "" {
 			return fmt.Errorf("no booted iOS simulator found (%w)", err)
 		}
@@ -228,10 +359,12 @@ Example:
 		}
 
 		shm := shmPath(udid)
+		fps := frameHostFPS(udid)
 
 		PrintInfo(fmt.Sprintf("Launching %s on %s", camLaunchBundle, udid))
 		PrintInfo(fmt.Sprintf("  dylib: %s", dylib))
 		PrintInfo(fmt.Sprintf("  shm:   %s", shm))
+		PrintInfo(fmt.Sprintf("  fps:   %d", fps))
 
 		// Ensure get-task-allow entitlement is present so DYLD_INSERT_LIBRARIES works.
 		appPathBytes, err := exec.Command("xcrun", "simctl", "get_app_container", udid, camLaunchBundle, "app").Output()
@@ -239,7 +372,7 @@ Example:
 			appPath := strings.TrimSpace(string(appPathBytes))
 			entOut, _ := exec.Command("codesign", "-d", "--entitlements", ":-", appPath).Output()
 			entXML := string(entOut)
-			
+
 			if !strings.Contains(entXML, "com.apple.security.get-task-allow") {
 				PrintInfo("  Injecting get-task-allow entitlement to permit dylib injection...")
 				if strings.Contains(entXML, "<dict>") {
@@ -262,6 +395,7 @@ Example:
 		c.Env = append(os.Environ(),
 			"SIMCTL_CHILD_DYLD_INSERT_LIBRARIES="+dylib,
 			"SIMCTL_CHILD_MINISIMCAM_PATH="+shm,
+			"SIMCTL_CHILD_MINISIMCAM_FPS="+strconv.Itoa(fps),
 		)
 		c.Stdout = os.Stdout
 		c.Stderr = os.Stderr
@@ -280,18 +414,22 @@ Example:
 
 var camStatusDevice string
 
-// camFrameLoopStatus mirrors FrameLoopStatus defined in FrameLoop.swift.
+// camFrameLoopStatus mirrors FrameLoopStatus defined in FrameLoop.swift and
+// the richer status written by CameraSource.
 type camFrameLoopStatus struct {
-	UDID           string  `json:"udid"`
-	Source         string  `json:"source"`
-	Width          int     `json:"width"`
-	Height         int     `json:"height"`
-	FPS            int     `json:"fps"`
-	FramesProduced uint64  `json:"framesProduced"`
-	HostPID        int32   `json:"hostPID"`
-	StartedAt      string  `json:"startedAt"`
-	LastFrameAgeMs float64 `json:"lastFrameAgeMs"`
-	Running        bool    `json:"running"`
+	UDID               string  `json:"udid"`
+	Source             string  `json:"source"`
+	CameraName         string  `json:"cameraName,omitempty"`
+	CameraType         string  `json:"cameraType,omitempty"`
+	Width              int     `json:"width"`
+	Height             int     `json:"height"`
+	FPS                int     `json:"fps"`
+	FramesProduced     uint64  `json:"framesProduced"`
+	HostPID            int32   `json:"hostPID"`
+	StartedAt          string  `json:"startedAt"`
+	LastFrameAgeMs     float64 `json:"lastFrameAgeMs"`
+	LastDisconnectedAt string  `json:"lastDisconnectedAt,omitempty"`
+	Running            bool    `json:"running"`
 }
 
 var camStatusCmd = &cobra.Command{
@@ -302,7 +440,7 @@ var camStatusCmd = &cobra.Command{
 			return fmt.Errorf("cam status is only supported on macOS")
 		}
 
-		udid, name, _, err := FindRunningDevice(camStatusDevice)
+		udid, name, err := findRunningIOSSimulator(camStatusDevice)
 		if err != nil || udid == "" {
 			return fmt.Errorf("no booted iOS simulator found (%w)", err)
 		}
@@ -323,6 +461,17 @@ var camStatusCmd = &cobra.Command{
 		lines := []string{
 			fmt.Sprintf("Simulator:       %s (%s)", name, udid),
 			fmt.Sprintf("Source:          %s", st.Source),
+		}
+		if st.CameraName != "" {
+			lines = append(lines, fmt.Sprintf("Camera:          %s", st.CameraName))
+		}
+		if st.CameraType != "" {
+			lines = append(lines, fmt.Sprintf("Camera type:     %s", st.CameraType))
+		}
+		if st.Source == "disconnected" && st.LastDisconnectedAt != "" {
+			lines = append(lines, fmt.Sprintf("⚠️  Disconnected at: %s", st.LastDisconnectedAt))
+		}
+		lines = append(lines,
 			fmt.Sprintf("Resolution:      %dx%d BGRA", st.Width, st.Height),
 			fmt.Sprintf("Frame rate:      %d fps", st.FPS),
 			fmt.Sprintf("Frames produced: %d", st.FramesProduced),
@@ -330,7 +479,7 @@ var camStatusCmd = &cobra.Command{
 			fmt.Sprintf("Host PID:        %d", st.HostPID),
 			fmt.Sprintf("Started at:      %s", st.StartedAt),
 			fmt.Sprintf("Running:         %v", st.Running),
-		}
+		)
 
 		width := 0
 		for _, l := range lines {
@@ -365,7 +514,7 @@ var camStopCmd = &cobra.Command{
 			return fmt.Errorf("cam stop is only supported on macOS")
 		}
 
-		udid, _, _, err := FindRunningDevice(camStopDevice)
+		udid, _, err := findRunningIOSSimulator(camStopDevice)
 		if err != nil || udid == "" {
 			return fmt.Errorf("no booted iOS simulator found (%w)", err)
 		}
@@ -378,7 +527,8 @@ var camStopCmd = &cobra.Command{
 	},
 }
 
-// stopFrameHost reads the PID file and sends SIGTERM.
+// stopFrameHost verifies that the PID still belongs to this FrameHost before
+// signalling it. A stale PID file must never interrupt an unrelated process.
 func stopFrameHost(udid string) error {
 	pidPath := pidFilePath(udid)
 	data, err := os.ReadFile(pidPath)
@@ -389,11 +539,23 @@ func stopFrameHost(udid string) error {
 	if err != nil {
 		return fmt.Errorf("invalid PID in %s: %w", pidPath, err)
 	}
-	proc, err := os.FindProcess(pid)
+	command, err := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "command=").Output()
 	if err != nil {
+		_ = os.Remove(pidPath)
 		return nil
 	}
-	_ = proc.Signal(os.Interrupt) // SIGINT — triggers clean shutdown.
+	commandLine := string(command)
+	if !strings.Contains(commandLine, "FrameHost") || !strings.Contains(commandLine, "--udid "+udid) {
+		_ = os.Remove(pidPath)
+		return nil
+	}
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return fmt.Errorf("cannot find FrameHost process %d: %w", pid, err)
+	}
+	if err := proc.Signal(os.Interrupt); err != nil {
+		return fmt.Errorf("cannot stop FrameHost process %d: %w", pid, err)
+	}
 	return nil
 }
 
@@ -412,11 +574,16 @@ func init() {
 	camStartCmd.Flags().StringVar(&camStartImage, "image", "", "Path to PNG or JPEG source image")
 	camStartCmd.Flags().BoolVar(&camStartBars, "bars", false, "Use synthetic SMPTE color-bar image")
 	camStartCmd.Flags().BoolVar(&camStartCamera, "camera", false, "Use the Mac's physical camera as a live source")
+	camStartCmd.Flags().StringVar(&camStartCameraID, "camera-id", "", "Camera name (substring) or uniqueID to select (requires --camera)")
+	camStartCmd.Flags().StringVar(&camStartScaleMode, "scale-mode", "", "How to scale: 'fill' (crop, fast) or 'fit' (letterbox, no crop). Requires --camera. (default: fill)")
 	camStartCmd.Flags().IntVar(&camStartWidth, "width", DefaultCamWidth, "Frame width in pixels")
 	camStartCmd.Flags().IntVar(&camStartHeight, "height", DefaultCamHeight, "Frame height in pixels")
 	camStartCmd.Flags().IntVar(&camStartFPS, "fps", DefaultCamFPS, "Frames per second (1-120)")
 	camStartCmd.Flags().StringVar(&camStartDevice, "device", "", "Simulator name or UDID (default: booted)")
 	camCmd.AddCommand(camStartCmd)
+
+	// list
+	camCmd.AddCommand(camListCmd)
 
 	// launch
 	camLaunchCmd.Flags().StringVar(&camLaunchBundle, "bundle-id", "", "App bundle identifier (required)")
