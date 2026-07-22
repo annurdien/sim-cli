@@ -77,7 +77,7 @@ func TestFrameHostFPS(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal status: %v", err)
 	}
-	if err := os.WriteFile(path, data, 0600); err != nil {
+	if err := os.WriteFile(path, data, 0o600); err != nil {
 		t.Fatalf("write status: %v", err)
 	}
 	if got := frameHostFPS(udid); got != 60 {

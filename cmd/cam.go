@@ -42,8 +42,8 @@ func miniSimCamDir() string {
 	return filepath.Join(cwd, "MiniSimCam")
 }
 
-func shmPath(udid string) string        { return fmt.Sprintf("/tmp/minisimcam.%s.frames", udid) }
-func pidFilePath(udid string) string    { return fmt.Sprintf("/tmp/minisimcam.%s.pid", udid) }
+func shmPath(udid string) string     { return fmt.Sprintf("/tmp/minisimcam.%s.frames", udid) }
+func pidFilePath(udid string) string { return fmt.Sprintf("/tmp/minisimcam.%s.pid", udid) }
 func statusFilePath(udid string) string {
 	primary := fmt.Sprintf("/tmp/minisimcam.%s.status", udid)
 	if _, err := os.Stat(primary); err == nil {
@@ -55,6 +55,7 @@ func statusFilePath(udid string) string {
 	}
 	return primary
 }
+
 // resolveEmbeddedBinDir returns the directory containing extracted embedded
 // binaries, or "" if the embedded assets are stubs (dev builds without cam).
 // The result is cached after the first successful extraction.
@@ -81,6 +82,7 @@ func frameHostBin(mscDir string) string {
 	}
 	return filepath.Join(mscDir, ".build", "release", "FrameHost")
 }
+
 func injectorDylib(mscDir string) string {
 	if binDir := resolveEmbeddedBinDir(); binDir != "" {
 		extracted := filepath.Join(binDir, "MiniCamInject.dylib")
@@ -130,6 +132,7 @@ func waitForFrameHostReady(c *exec.Cmd, statusPath string) error {
 				return nil
 			}
 		case <-deadline.C:
+			_ = c.Process.Kill()
 			return fmt.Errorf("FrameHost did not become ready within 5 seconds")
 		}
 	}
@@ -399,7 +402,7 @@ Example:
 					entXML = `<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>com.apple.security.get-task-allow</key><true/></dict></plist>`
 				}
 				entPath := filepath.Join(os.TempDir(), "minisimcam_entitlements.plist")
-				if writeErr := os.WriteFile(entPath, []byte(entXML), 0644); writeErr != nil {
+				if writeErr := os.WriteFile(entPath, []byte(entXML), 0o644); writeErr != nil {
 					PrintInfo(fmt.Sprintf("  Warning: cannot write entitlements file: %v", writeErr))
 				} else if signErr := exec.Command("codesign", "-f", "-s", "-", "--entitlements", entPath, appPath).Run(); signErr != nil {
 					PrintInfo(fmt.Sprintf("  Warning: codesign re-sign failed: %v", signErr))
@@ -410,7 +413,8 @@ Example:
 		}
 
 		c := exec.Command("xcrun", "simctl", "launch", udid, camLaunchBundle)
-		c.Env = append(os.Environ(),
+		c.Env = append(
+			os.Environ(),
 			"SIMCTL_CHILD_DYLD_INSERT_LIBRARIES="+dylib,
 			"SIMCTL_CHILD_MINISIMCAM_PATH="+shm,
 			"SIMCTL_CHILD_MINISIMCAM_FPS="+strconv.Itoa(fps),
@@ -489,7 +493,8 @@ var camStatusCmd = &cobra.Command{
 		if st.Source == "disconnected" && st.LastDisconnectedAt != "" {
 			lines = append(lines, fmt.Sprintf("⚠️  Disconnected at: %s", st.LastDisconnectedAt))
 		}
-		lines = append(lines,
+		lines = append(
+			lines,
 			fmt.Sprintf("Resolution:      %dx%d BGRA", st.Width, st.Height),
 			fmt.Sprintf("Frame rate:      %d fps", st.FPS),
 			fmt.Sprintf("Frames produced: %d", st.FramesProduced),
@@ -559,7 +564,7 @@ func setGlobalSimEnv(udid string, fps int) {
 	mscDir := miniSimCamDir()
 	dylib := injectorDylib(mscDir)
 	shm := shmPath(udid)
-	
+
 	_ = exec.Command("xcrun", "simctl", "spawn", udid, "launchctl", "setenv", "DYLD_INSERT_LIBRARIES", dylib).Run()
 	_ = exec.Command("xcrun", "simctl", "spawn", udid, "launchctl", "setenv", "MINISIMCAM_PATH", shm).Run()
 	_ = exec.Command("xcrun", "simctl", "spawn", udid, "launchctl", "setenv", "MINISIMCAM_FPS", strconv.Itoa(fps)).Run()
@@ -583,13 +588,27 @@ func stopFrameHost(udid string) error {
 	unsetGlobalSimEnv(udid)
 
 	defer func() {
-		_ = os.Remove(pidPath)
-		_ = os.Remove(statusPath)
-		// We purposefully DO NOT remove the shm file so it can be reused seamlessly
-		// across FrameHost restarts.
 		if udid != "" {
+			_ = os.Remove(pidPath)
+			_ = os.Remove(statusPath)
 			_ = os.Remove(fmt.Sprintf("/tmp/minisimcam.%s.pid", udid))
 			_ = os.Remove(fmt.Sprintf("/tmp/minisimcam.%s.status", udid))
+		} else {
+			if files, err := filepath.Glob("/tmp/minisimcam.*.pid"); err == nil {
+				for _, f := range files {
+					_ = os.Remove(f)
+				}
+			}
+			if files, err := filepath.Glob("/tmp/minisimcam.*.status"); err == nil {
+				for _, f := range files {
+					_ = os.Remove(f)
+				}
+			}
+			if files, err := filepath.Glob(filepath.Join(os.TempDir(), "minisimcam.*.status")); err == nil {
+				for _, f := range files {
+					_ = os.Remove(f)
+				}
+			}
 		}
 	}()
 

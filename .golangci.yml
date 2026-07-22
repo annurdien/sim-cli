@@ -110,6 +110,15 @@ linters:
           - nestif
         path: cmd/
       - linters:
+          - err113
+          - nlreturn
+          - gocritic
+          - tagliatelle
+          - gocyclo
+          - testpackage
+          - cyclop
+        path: cmd/cam.*\.go
+      - linters:
           - gci
         path: cmd/device.go
       - linters:
@@ -121,6 +130,7 @@ linters:
           - revive
           - gosec
           - unparam
+          - staticcheck
         path: tests/
     paths:
       - third_party$

@@ -75,6 +75,15 @@ jobs:
     - name: Build for multiple platforms
       run: make build-all
 
+    - name: Clean up cross-platform artifacts
+      run: |
+        if [ "$RUNNER_OS" == "macOS" ]; then
+          rm -f dist/sim-linux-amd64 dist/sim-windows-amd64.exe
+        else
+          rm -f dist/sim-darwin-amd64 dist/sim-darwin-arm64
+        fi
+      shell: bash
+
     - name: Create checksums (Linux only)
       if: matrix.os == 'ubuntu-latest'
       run: |

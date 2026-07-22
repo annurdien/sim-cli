@@ -175,7 +175,7 @@ func refreshCamDevicesCmd() tea.Cmd {
 
 func refreshCamStatusOnlyCmd(sims []camSimDevice) tea.Cmd {
 	return func() tea.Msg {
-		var booted []camSimDevice
+		booted := make([]camSimDevice, 0, len(sims))
 		for _, dev := range sims {
 			dev.CamStatus = "Stopped"
 			dev.CamSource = "-"
@@ -239,8 +239,6 @@ func (m camDashboardModel) Init() tea.Cmd {
 	var cmds []tea.Cmd
 	cmds = append(cmds, m.spinner.Tick, refreshCamDevicesCmd(), camTickCmd())
 	if len(m.simulators) > 0 {
-		m.selectedSimUDID = m.simulators[0].UDID
-		m.selectedSimName = m.simulators[0].Name
 		cmds = append(cmds, fetchCamerasCmd(), fetchAppsCmd(m.selectedSimUDID))
 	}
 	return tea.Batch(cmds...)
@@ -258,7 +256,7 @@ func updateTableFocus(m *camDashboardModel) {
 	m.simTable.Focus()
 	m.cameraTable.Focus()
 	m.appTable.Focus()
-	
+
 	if m.focused != paneSimulators {
 		m.simTable.Blur()
 	}
@@ -334,11 +332,12 @@ func (m camDashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		var cmd tea.Cmd
-		if m.focused == paneSimulators {
+		switch m.focused {
+		case paneSimulators:
 			m.simTable, cmd = m.simTable.Update(msg)
-		} else if m.focused == paneCameras {
+		case paneCameras:
 			m.cameraTable, cmd = m.cameraTable.Update(msg)
-		} else if m.focused == paneApps {
+		case paneApps:
 			m.appTable, cmd = m.appTable.Update(msg)
 		}
 		cmds = append(cmds, cmd)
@@ -413,10 +412,11 @@ func (m camDashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.filterInput.Focus()
 				}
 			case "enter":
-				if m.focused == paneSimulators {
+				switch m.focused {
+				case paneSimulators:
 					m.focused = paneCameras
 					updateTableFocus(&m)
-				} else if m.focused == paneCameras {
+				case paneCameras:
 					idx := m.cameraTable.Cursor()
 					if idx >= 0 && idx < len(m.cameras) {
 						camID := m.cameras[idx].UniqueID
@@ -426,7 +426,7 @@ func (m camDashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							return startCameraForDevice(m.selectedSimUDID, true, "", camID, m.camWidth, m.camHeight)
 						}, "Started camera feed for "+m.selectedSimName))
 					}
-				} else if m.focused == paneApps {
+				case paneApps:
 					idx := m.appTable.Cursor()
 					if idx >= 0 && idx < len(m.filteredApps) {
 						bundleID := m.filteredApps[idx].BundleID
@@ -490,7 +490,7 @@ func (m camDashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			{Title: "Bundle ID", Width: aw2},
 			{Title: "Type", Width: aw3},
 		})
-		
+
 		m.presetList.SetSize(60, 20)
 
 	case camRefreshMsg:
@@ -554,12 +554,12 @@ func (m camDashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	oldSimUDID := m.selectedSimUDID
-	
+
 	if m.focused == paneSimulators && !m.showPopup {
 		var tableCmd tea.Cmd
 		m.simTable, tableCmd = m.simTable.Update(msg)
 		cmds = append(cmds, tableCmd)
-		
+
 		idx := m.simTable.Cursor()
 		if idx >= 0 && idx < len(m.simulators) {
 			m.selectedSimUDID = m.simulators[idx].UDID
@@ -585,7 +585,7 @@ func (m camDashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m camDashboardModel) View() string {
-	activeColor := lipgloss.Color("62") // Purple highlight
+	activeColor := lipgloss.Color("62")    // Purple highlight
 	inactiveColor := lipgloss.Color("240") // Gray
 
 	borderStyle := func(pane focusPane) lipgloss.Style {
@@ -639,7 +639,7 @@ func (m camDashboardModel) View() string {
 			Foreground(lipgloss.Color("252"))
 
 		popupView := popupStyle.Render(m.presetList.View())
-		
+
 		// Create a full screen container and place the popup in the center
 		ui = lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, popupView, lipgloss.WithWhitespaceChars(" "))
 	}
@@ -682,7 +682,7 @@ func startCameraForDevice(udid string, useCamera bool, imagePath string, cameraI
 	if err := c.Start(); err != nil {
 		return err
 	}
-	
+
 	setGlobalSimEnv(udid, DefaultCamFPS)
 
 	return waitForFrameHostReady(c, statusFilePath(udid))
@@ -775,7 +775,7 @@ func runCamDashboard() error {
 	ti.Placeholder = "Search..."
 	ti.CharLimit = 156
 	ti.Width = 20
-	
+
 	presetItems := []list.Item{
 		ResolutionPreset{title: "720p (16:9)", description: "1280 x 720 (Default)", width: 1280, height: 720},
 		ResolutionPreset{title: "1080p (16:9)", description: "1920 x 1080", width: 1920, height: 1080},
@@ -800,6 +800,11 @@ func runCamDashboard() error {
 		simulators:  initialSims,
 		camWidth:    DefaultCamWidth,
 		camHeight:   DefaultCamHeight,
+	}
+
+	if len(initialSims) > 0 {
+		m.selectedSimUDID = initialSims[0].UDID
+		m.selectedSimName = initialSims[0].Name
 	}
 
 	if _, err := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run(); err != nil {
