@@ -158,6 +158,7 @@ sim last
 | `last` | - | Show the last used device. |
 | `lts` | - | Start the last used device (short for `sim start lts`). |
 | `completion <shell>` | - | Generate shell autocompletion script. |
+| `cam` | - | iOS Simulator camera injection and management. |
 | `version` | `-v` | Show the current version. |
 | `help` | - | Show help information. |
 
@@ -226,6 +227,17 @@ sim copy to "iPhone 15 Pro" ~/Pictures/test.png
 # Copy a remote file from an Android device to your local machine
 sim copy from "Pixel_7" /sdcard/Download/test.png ./
 ```
+
+## Camera Injection
+
+SIM-CLI supports injecting physical webcams, Continuity Cameras, or static images directly into iOS Simulator applications, bypassing the simulator's lack of native camera support.
+
+To open the camera management dashboard:
+```bash
+sim cam
+```
+
+For detailed technical information on how the shared memory and dylib injection works, please read the [SIM-CLI Camera Architecture](docs/SIM_CAM_ARCHITECTURE.md).
 
 ## Configuration
 
