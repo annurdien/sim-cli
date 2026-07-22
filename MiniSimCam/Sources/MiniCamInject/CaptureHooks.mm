@@ -35,6 +35,10 @@ static MSCSampleBufferFactory* gFactory;
 static id<AVCaptureVideoDataOutputSampleBufferDelegate> gDelegate;
 static dispatch_queue_t      gDelegateQueue;
 static BOOL                  gRunning = NO;
+// Tracks whether the app explicitly called startRunning on the AVCaptureSession.
+// Used to avoid auto-starting the session when the app already did so, which
+// would crash on Simulator by calling startRunning on an already-running session.
+static BOOL                  gAVSessionStarted = NO;
 static NSLock*               gLock;
 static int32_t               gFPS = 30;
 static NSHashTable<AVCaptureVideoPreviewLayer *> *gPreviewLayers;
@@ -79,6 +83,9 @@ static void swizzleClass(Class cls, SEL orig, SEL repl) {
 
 - (void)msc_startRunning {
     NSLog(@"[MiniCamInject] AVCaptureSession startRunning intercepted");
+    [gLock lock];
+    gAVSessionStarted = YES;
+    [gLock unlock];
     [self msc_startRunning]; // call original (if any)
     // gReader is initialised in EntryPoint — do not recreate here.
     startDelivery();
@@ -189,6 +196,10 @@ static AVCaptureVideoDataOutput* gOutput;
 - (CMTime)activeVideoMinFrameDuration { return CMTimeMake(1, 30); }
 - (void)setActiveVideoMaxFrameDuration:(CMTime)activeVideoMaxFrameDuration {}
 - (CMTime)activeVideoMaxFrameDuration { return CMTimeMake(1, 30); }
+
+// Device type — needed so discovery-session filters (e.g. bestPossibleBackCamera)
+// can match via their preferred-type loop rather than falling through to the last-resort .first.
+- (AVCaptureDeviceType)deviceType { return AVCaptureDeviceTypeBuiltInWideAngleCamera; }
 
 - (id)activeFormat {
     static MSCFakeCaptureDeviceFormat *fakeFormat = nil;
@@ -330,16 +341,16 @@ static AVCaptureVideoDataOutput* gOutput;
     return [self msc_deviceInputWithDevice:device error:outError];
 }
 
-- (instancetype)msc_initWithDevice:(AVCaptureDevice *)device error:(NSError **)outError {
+- (instancetype)init_mscWithDevice:(AVCaptureDevice *)device error:(NSError **)outError {
     if ([device isKindOfClass:NSClassFromString(@"MSCFakeCaptureDevice")]) {
         static MSCFakeCaptureInput *fakeInput = nil;
         static dispatch_once_t onceToken;
         dispatch_once(&onceToken, ^{
             fakeInput = (MSCFakeCaptureInput *)class_createInstance(NSClassFromString(@"MSCFakeCaptureInput"), 0);
         });
-        return fakeInput;
+        return (__bridge id)CFRetain((__bridge CFTypeRef)fakeInput);
     }
-    return [self msc_initWithDevice:device error:outError];
+    return [self init_mscWithDevice:device error:outError];
 }
 
 @end
@@ -353,8 +364,8 @@ static void startDelivery(void);
 
 @implementation AVCaptureVideoPreviewLayer (MiniCamHook)
 
-- (instancetype)msc_initWithSession:(AVCaptureSession *)session {
-    id instance = [self msc_initWithSession:session];
+- (instancetype)init_mscWithSession:(AVCaptureSession *)session {
+    id instance = [self init_mscWithSession:session];
     if (instance) {
         [gLock lock];
         [gPreviewLayers addObject:instance];
@@ -362,12 +373,31 @@ static void startDelivery(void);
         ((AVCaptureVideoPreviewLayer *)instance).contentsGravity = kCAGravityResizeAspectFill;
         // gReader is initialised in EntryPoint — do not recreate here.
         startDelivery();
+        // Auto-start the session so AVCaptureVideoPreviewLayer activates its rendering
+        // path. Delayed 500 ms so onAppear (and any explicit startRunning the app calls)
+        // has already fired by the time the block runs. gAVSessionStarted gates the call
+        // so apps that do call startRunning() are unaffected.
+        if (session) {
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(500 * NSEC_PER_MSEC)),
+                           dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+                [gLock lock];
+                BOOL alreadyStarted = gAVSessionStarted;
+                [gLock unlock];
+                if (!alreadyStarted) {
+                    NSLog(@"[MiniCamInject] preview layer got session but app never called startRunning — auto-starting");
+                    @try { [session startRunning]; }
+                    @catch (NSException *e) {
+                        NSLog(@"[MiniCamInject] auto-start failed: %@", e.reason);
+                    }
+                }
+            });
+        }
     }
     return instance;
 }
 
-- (instancetype)msc_initWithSessionWithNoConnection:(AVCaptureSession *)session {
-    id instance = [self msc_initWithSessionWithNoConnection:session];
+- (instancetype)init_mscWithSessionWithNoConnection:(AVCaptureSession *)session {
+    id instance = [self init_mscWithSessionWithNoConnection:session];
     if (instance) {
         [gLock lock];
         [gPreviewLayers addObject:instance];
@@ -375,6 +405,25 @@ static void startDelivery(void);
         ((AVCaptureVideoPreviewLayer *)instance).contentsGravity = kCAGravityResizeAspectFill;
         // gReader is initialised in EntryPoint — do not recreate here.
         startDelivery();
+        // Auto-start the session so AVCaptureVideoPreviewLayer activates its rendering
+        // path. Delayed 500 ms so onAppear (and any explicit startRunning the app calls)
+        // has already fired by the time the block runs. gAVSessionStarted gates the call
+        // so apps that do call startRunning() are unaffected.
+        if (session) {
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(500 * NSEC_PER_MSEC)),
+                           dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+                [gLock lock];
+                BOOL alreadyStarted = gAVSessionStarted;
+                [gLock unlock];
+                if (!alreadyStarted) {
+                    NSLog(@"[MiniCamInject] preview layer got session but app never called startRunning — auto-starting");
+                    @try { [session startRunning]; }
+                    @catch (NSException *e) {
+                        NSLog(@"[MiniCamInject] auto-start failed: %@", e.reason);
+                    }
+                }
+            });
+        }
     }
     return instance;
 }
@@ -394,6 +443,25 @@ static void startDelivery(void);
     if (session) {
         // gReader is initialised in EntryPoint — do not recreate here.
         startDelivery();
+        // Auto-start the session so AVCaptureVideoPreviewLayer activates its rendering
+        // path. Apps that configure inputs/outputs without calling startRunning() (e.g.
+        // PermissionManager patterns) would otherwise show a frozen black frame because
+        // the preview layer's internal renderer stays dormant until the session runs.
+        // Delayed 500 ms so the app's own onAppear/startRunning (if any) fires first,
+        // preventing a double-start crash on Simulator. @try/@catch for safety.
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(500 * NSEC_PER_MSEC)),
+                       dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+            [gLock lock];
+            BOOL alreadyStarted = gAVSessionStarted;
+            [gLock unlock];
+            if (!alreadyStarted) {
+                NSLog(@"[MiniCamInject] preview layer got session but app never called startRunning — auto-starting");
+                @try { [session startRunning]; }
+                @catch (NSException *e) {
+                    NSLog(@"[MiniCamInject] auto-start failed: %@", e.reason);
+                }
+            }
+        });
     }
     
     [self msc_setSession:session];
@@ -546,11 +614,11 @@ void MSCInstallHooks(SharedFrameReader* reader, int32_t fps) {
         if (m1 && m2) method_exchangeImplementations(m1, m2);
 
         Method m3 = class_getInstanceMethod(layerCls, @selector(initWithSession:));
-        Method m4 = class_getInstanceMethod(layerCls, @selector(msc_initWithSession:));
+        Method m4 = class_getInstanceMethod(layerCls, @selector(init_mscWithSession:));
         if (m3 && m4) method_exchangeImplementations(m3, m4);
 
         Method m5 = class_getInstanceMethod(layerCls, @selector(initWithSessionWithNoConnection:));
-        Method m6 = class_getInstanceMethod(layerCls, @selector(msc_initWithSessionWithNoConnection:));
+        Method m6 = class_getInstanceMethod(layerCls, @selector(init_mscWithSessionWithNoConnection:));
         if (m5 && m6) method_exchangeImplementations(m5, m6);
     }
 
@@ -574,7 +642,7 @@ void MSCInstallHooks(SharedFrameReader* reader, int32_t fps) {
                  @selector(msc_deviceInputWithDevice:error:));
     swizzleInstance([AVCaptureDeviceInput class],
                  @selector(initWithDevice:error:),
-                 @selector(msc_initWithDevice:error:));
+                 @selector(init_mscWithDevice:error:));
 
     // AVCaptureDeviceDiscoverySession
     Class discoverySessionCls = NSClassFromString(@"AVCaptureDeviceDiscoverySession");

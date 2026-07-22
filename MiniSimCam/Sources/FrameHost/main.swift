@@ -24,6 +24,9 @@ struct FrameHostCommand: ParsableCommand {
     @Flag(name: .long, help: "Use a synthetic SMPTE color-bar image instead of a file.")
     var bars: Bool = false
 
+    @Flag(name: .long, help: "Use the Mac's physical camera as a live source.")
+    var camera: Bool = false
+
     @Option(name: .long, help: "Output frame width in pixels.")
     var width: Int = 1280
 
@@ -36,8 +39,9 @@ struct FrameHostCommand: ParsableCommand {
     // MARK: - Validation
 
     func validate() throws {
-        guard image != nil || bars else {
-            throw ValidationError("Provide either --image <path> or --bars.")
+        let count = (image != nil ? 1 : 0) + (bars ? 1 : 0) + (camera ? 1 : 0)
+        guard count == 1 else {
+            throw ValidationError("Provide exactly one of: --image <path>, --bars, or --camera.")
         }
         guard width > 0, height > 0 else { throw ValidationError("Width and height must be > 0.") }
         guard fps > 0, fps <= 120 else { throw ValidationError("FPS must be between 1 and 120.") }
@@ -56,34 +60,42 @@ struct FrameHostCommand: ParsableCommand {
         try String(pid).write(toFile: pidPath, atomically: false, encoding: .utf8)
         defer { try? FileManager.default.removeItem(atPath: pidPath) }
 
-        // Load or generate the source frame.
-        let sourceName: String
-        let frame: BGRAFrame
-
-        if bars {
-            sourceName = "color-bars"
-            frame = try ImageSource.colorBars(width: width, height: height)
-        } else {
-            let url = URL(fileURLWithPath: image!)
-            sourceName = url.lastPathComponent
-            frame = try ImageSource.load(url: url, targetWidth: width, targetHeight: height)
-        }
-
         // Open shared memory.
         let writer = SharedFrameWriter(path: shmPath)
         try writer.open(width: width, height: height)
         defer { writer.close() }
 
-        // Start the frame loop.
-        let loop = FrameLoop(
-            writer:     writer,
-            frame:      frame,
-            fps:        fps,
-            udid:       udid,
-            sourceName: sourceName,
-            statusPath: statusPath
-        )
-        loop.start()
+        // Start the appropriate source
+        let sourceName: String
+        let loop: FrameLoop?
+        let camSource: CameraSource?
+
+        if camera {
+            sourceName = "mac-camera"
+            loop = nil
+            camSource = try CameraSource(writer: writer, width: width, height: height, fps: fps, udid: udid, statusPath: statusPath)
+            try camSource?.start()
+        } else {
+            let frame: BGRAFrame
+            if bars {
+                sourceName = "color-bars"
+                frame = try ImageSource.colorBars(width: width, height: height)
+            } else {
+                let url = URL(fileURLWithPath: image!)
+                sourceName = url.lastPathComponent
+                frame = try ImageSource.load(url: url, targetWidth: width, targetHeight: height)
+            }
+            camSource = nil
+            loop = FrameLoop(
+                writer:     writer,
+                frame:      frame,
+                fps:        fps,
+                udid:       udid,
+                sourceName: sourceName,
+                statusPath: statusPath
+            )
+            loop?.start()
+        }
 
         print("[FrameHost] started — source=\(sourceName) \(width)×\(height) @ \(fps) fps")
         print("[FrameHost] shared memory: \(shmPath)")
@@ -97,7 +109,8 @@ struct FrameHostCommand: ParsableCommand {
         let sigTerm = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
         sigTerm.setEventHandler {
             print("[FrameHost] received SIGTERM — shutting down.")
-            loop.stop()
+            loop?.stop()
+            camSource?.stop()
             Foundation.exit(0)
         }
         sigTerm.resume()
@@ -105,7 +118,8 @@ struct FrameHostCommand: ParsableCommand {
         let sigInt = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
         sigInt.setEventHandler {
             print("[FrameHost] received SIGINT — shutting down.")
-            loop.stop()
+            loop?.stop()
+            camSource?.stop()
             Foundation.exit(0)
         }
         sigInt.resume()

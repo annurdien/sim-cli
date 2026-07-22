@@ -145,10 +145,7 @@
         return nil;
     }
 
-    CMTime pts = CMTimeAdd(
-        _startCMTime,
-        CMTimeMakeWithSeconds((double)ptsNs / 1e9, 90000)
-    );
+    CMTime pts = CMTimeMake(ptsNs, 1000000000);
 
     CMSampleTimingInfo timing = {
         .duration              = _frameDuration,
