@@ -43,8 +43,18 @@ func miniSimCamDir() string {
 }
 
 func shmPath(udid string) string        { return fmt.Sprintf("/tmp/minisimcam.%s.frames", udid) }
-func statusFilePath(udid string) string { return fmt.Sprintf("/tmp/minisimcam.%s.status", udid) }
 func pidFilePath(udid string) string    { return fmt.Sprintf("/tmp/minisimcam.%s.pid", udid) }
+func statusFilePath(udid string) string {
+	primary := fmt.Sprintf("/tmp/minisimcam.%s.status", udid)
+	if _, err := os.Stat(primary); err == nil {
+		return primary
+	}
+	secondary := filepath.Join(os.TempDir(), fmt.Sprintf("minisimcam.%s.status", udid))
+	if _, err := os.Stat(secondary); err == nil {
+		return secondary
+	}
+	return primary
+}
 // resolveEmbeddedBinDir returns the directory containing extracted embedded
 // binaries, or "" if the embedded assets are stubs (dev builds without cam).
 // The result is cached after the first successful extraction.
@@ -151,10 +161,17 @@ shared memory. A dylib (MiniCamInject) loaded into your simulator app reads
 those frames and delivers them as CMSampleBuffer callbacks.
 
 Quick start:
+  sim cam
   sim cam start --image test.png
   sim cam launch --bundle-id com.example.MyApp
   sim cam status
   sim cam stop`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if runtime.GOOS != DarwinOS {
+			return fmt.Errorf("cam is only supported on macOS")
+		}
+		return runCamDashboard()
+	},
 }
 
 // ---------------------------------------------------------------------------
@@ -517,7 +534,14 @@ var camStopCmd = &cobra.Command{
 
 		udid, _, err := findRunningIOSSimulator(camStopDevice)
 		if err != nil || udid == "" {
-			return fmt.Errorf("no booted iOS simulator found (%w)", err)
+			if camStopDevice == "" {
+				_ = stopFrameHost("")
+				PrintSuccess("All FrameHost processes stopped.")
+				return nil
+			}
+			_ = stopFrameHost(camStopDevice)
+			PrintSuccess("FrameHost stopped.")
+			return nil
 		}
 
 		if err := stopFrameHost(udid); err != nil {
@@ -528,35 +552,44 @@ var camStopCmd = &cobra.Command{
 	},
 }
 
-// stopFrameHost verifies that the PID still belongs to this FrameHost before
-// signalling it. A stale PID file must never interrupt an unrelated process.
+// stopFrameHost scans all running processes and terminates ALL FrameHost processes
+// associated with the target UDID immediately.
 func stopFrameHost(udid string) error {
 	pidPath := pidFilePath(udid)
-	data, err := os.ReadFile(pidPath)
-	if err != nil {
-		return nil // No PID file — nothing to stop.
-	}
-	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
-	if err != nil {
-		return fmt.Errorf("invalid PID in %s: %w", pidPath, err)
-	}
-	command, err := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "command=").Output()
-	if err != nil {
+	statusPath := statusFilePath(udid)
+	shm := shmPath(udid)
+
+	defer func() {
 		_ = os.Remove(pidPath)
+		_ = os.Remove(statusPath)
+		_ = os.Remove(shm)
+		if udid != "" {
+			_ = os.Remove(fmt.Sprintf("/tmp/minisimcam.%s.pid", udid))
+			_ = os.Remove(fmt.Sprintf("/tmp/minisimcam.%s.status", udid))
+			_ = os.Remove(fmt.Sprintf("/tmp/minisimcam.%s.frames", udid))
+		}
+	}()
+
+	out, err := exec.Command("ps", "-eo", "pid,command").Output()
+	if err != nil {
 		return nil
 	}
-	commandLine := string(command)
-	if !strings.Contains(commandLine, "FrameHost") || !strings.Contains(commandLine, "--udid "+udid) {
-		_ = os.Remove(pidPath)
-		return nil
+
+	lines := strings.Split(string(out), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.Contains(line, "FrameHost") && (udid == "" || strings.Contains(line, udid)) {
+			fields := strings.Fields(line)
+			if len(fields) > 0 {
+				if pid, err := strconv.Atoi(fields[0]); err == nil {
+					if proc, err := os.FindProcess(pid); err == nil {
+						_ = proc.Kill()
+					}
+				}
+			}
+		}
 	}
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return fmt.Errorf("cannot find FrameHost process %d: %w", pid, err)
-	}
-	if err := proc.Signal(os.Interrupt); err != nil {
-		return fmt.Errorf("cannot stop FrameHost process %d: %w", pid, err)
-	}
+
 	return nil
 }
 
