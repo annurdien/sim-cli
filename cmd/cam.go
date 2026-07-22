@@ -579,18 +579,17 @@ func unsetGlobalSimEnv(udid string) {
 func stopFrameHost(udid string) error {
 	pidPath := pidFilePath(udid)
 	statusPath := statusFilePath(udid)
-	shm := shmPath(udid)
 
 	unsetGlobalSimEnv(udid)
 
 	defer func() {
 		_ = os.Remove(pidPath)
 		_ = os.Remove(statusPath)
-		_ = os.Remove(shm)
+		// We purposefully DO NOT remove the shm file so it can be reused seamlessly
+		// across FrameHost restarts.
 		if udid != "" {
 			_ = os.Remove(fmt.Sprintf("/tmp/minisimcam.%s.pid", udid))
 			_ = os.Remove(fmt.Sprintf("/tmp/minisimcam.%s.status", udid))
-			_ = os.Remove(fmt.Sprintf("/tmp/minisimcam.%s.frames", udid))
 		}
 	}()
 
