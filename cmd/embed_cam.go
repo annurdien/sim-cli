@@ -1,4 +1,4 @@
-//go:build cam_embed
+//go:build darwin && cam_embed
 
 package cmd
 
