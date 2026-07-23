@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// --- Cobra Commands ---
+
 
 var startCmd = &cobra.Command{
 	Use:     "start [device-name-or-udid|lts]",
@@ -229,7 +229,7 @@ var ltsCmd = &cobra.Command{
 	},
 }
 
-// --- Shared Start Logic ---
+
 
 // startDevice handles the 'start' action for both startCmd and ltsCmd.
 // NoWait skips the Android boot-wait polling when true.
@@ -256,9 +256,9 @@ func startDevice(deviceID string, noWait bool) error {
 	return fmt.Errorf("device %q: %w", deviceID, ErrDeviceNotFound)
 }
 
-// --- Old functions removed ---
 
-// --- Device Lookup Helpers ---
+
+
 
 // FindIOSSimulatorByID finds an iOS simulator by name (case-insensitive) or exact UDID.
 // Merges the former findIOSSimulator and findIOSSimulatorByID into a single efficient function.
