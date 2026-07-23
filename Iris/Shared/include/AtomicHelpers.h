@@ -22,14 +22,14 @@ uint64_t iris_seq_load_acquire(const void *header);
 /// Store to the sequence field with release ordering.
 void iris_seq_store_release(void *header, uint64_t value);
 
-// ---- PublishedIndex (offset 40, uint32_t _Atomic) -------------------------
-// See IRIS_OFF_PUBLISHED_INDEX in IrisProtocol.h.
+// ---- IOSurfaceID (offset 40, uint32_t _Atomic) -------------------------
+// See IRIS_OFF_IOSURFACE_ID in IrisProtocol.h.
 
-/// Acquire-load the publishedIndex field.
-uint32_t iris_idx_load_acquire(const void *header);
+/// Acquire-load the ioSurfaceID field.
+uint32_t iris_iosfc_load_acquire(const void *header);
 
-/// Relaxed-store to the publishedIndex field.
-void iris_idx_store_relaxed(void *header, uint32_t value);
+/// Relaxed-store to the ioSurfaceID field.
+void iris_iosfc_store_relaxed(void *header, uint32_t value);
 
 // ---- FramesProduced (offset 56, uint64_t _Atomic) -------------------------
 // See IRIS_OFF_FRAMES_PRODUCED in IrisProtocol.h.

@@ -9,7 +9,7 @@
 
 // Byte-pointer helpers using the offsets defined in IrisProtocol.h.
 #define SEQ_PTR(h)  ((volatile uint64_t *)((uint8_t *)(h) + IRIS_OFF_SEQUENCE))
-#define IDX_PTR(h)  ((volatile uint32_t *)((uint8_t *)(h) + IRIS_OFF_PUBLISHED_INDEX))
+#define IOSFC_PTR(h) ((volatile uint32_t *)((uint8_t *)(h) + IRIS_OFF_IOSURFACE_ID))
 #define FP_PTR(h)   ((volatile uint64_t *)((uint8_t *)(h) + IRIS_OFF_FRAMES_PRODUCED))
 
 // Sequence
@@ -22,14 +22,14 @@ void iris_seq_store_release(void *header, uint64_t value) {
     __atomic_store_n(SEQ_PTR(header), value, __ATOMIC_RELEASE);
 }
 
-// PublishedIndex
+// IOSurfaceID
 
-uint32_t iris_idx_load_acquire(const void *header) {
-    return __atomic_load_n(IDX_PTR(header), __ATOMIC_ACQUIRE);
+uint32_t iris_iosfc_load_acquire(const void *header) {
+    return __atomic_load_n(IOSFC_PTR(header), __ATOMIC_ACQUIRE);
 }
 
-void iris_idx_store_relaxed(void *header, uint32_t value) {
-    __atomic_store_n(IDX_PTR(header), value, __ATOMIC_RELAXED);
+void iris_iosfc_store_relaxed(void *header, uint32_t value) {
+    __atomic_store_n(IOSFC_PTR(header), value, __ATOMIC_RELAXED);
 }
 
 // FramesProduced

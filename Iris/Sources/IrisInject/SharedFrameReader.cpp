@@ -1,8 +1,6 @@
 // SharedFrameReader.cpp
-// Sequence-lock consumer for the shared-memory triple-buffer.
-// The struct fields are plain integers; we cast their addresses to
-// std::atomic<T>* for correct cross-process atomic semantics (C++20
-// guarantees this is well-defined when the natural alignment matches).
+// Sequence-lock consumer for the shared-memory header.
+// Retrieves the IOSurfaceID instead of raw pixels.
 
 #include "SharedFrameReader.hpp"
 #include <sys/mman.h>
@@ -12,6 +10,7 @@
 #include <atomic>
 #include <cstring>
 #include <mach/mach_time.h>
+#include <mutex>
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -31,16 +30,10 @@ static std::atomic<T>* atomicAt(void* base, size_t offset) {
         static_cast<uint8_t*>(base) + offset
     );
 }
-template<typename T>
-static const std::atomic<T>* atomicAt(const void* base, size_t offset) {
-    return reinterpret_cast<const std::atomic<T>*>(
-        static_cast<const uint8_t*>(base) + offset
-    );
-}
 
 // Offsets matching IRISStreamHeader in IrisProtocol.h.
 constexpr size_t kOffSequence       = IRIS_OFF_SEQUENCE;         // 32
-constexpr size_t kOffPublishedIndex = IRIS_OFF_PUBLISHED_INDEX;  // 40
+constexpr size_t kOffIOSurfaceID    = IRIS_OFF_IOSURFACE_ID;     // 40
 constexpr size_t kOffFramesProduced = IRIS_OFF_FRAMES_PRODUCED;  // 56
 
 // ---------------------------------------------------------------------------
@@ -72,7 +65,7 @@ bool SharedFrameReader::open() {
         return false;
     }
 
-    size_t total = iris_mapping_size(hdr.bufferSize);
+    size_t total = iris_mapping_size();
 
     struct stat st;
     if (fstat(fd_, &st) != 0 || (size_t)st.st_size < total) {
@@ -104,13 +97,12 @@ FrameSnapshot SharedFrameReader::copyLatestFrame() {
     auto* hdr = header();
     if (hdr->magic != IRIS_MAGIC || hdr->version != IRIS_VERSION) return snap;
 
-    const uint32_t bufSize = hdr->bufferSize;
-    const uint32_t bpr     = hdr->bytesPerRow;
-    const uint32_t w       = hdr->width;
-    const uint32_t h       = hdr->height;
+    const uint32_t bpr = hdr->bytesPerRow;
+    const uint32_t w   = hdr->width;
+    const uint32_t h   = hdr->height;
 
     auto* seqAtomic = atomicAt<uint64_t>(mapping_, kOffSequence);
-    auto* idxAtomic = atomicAt<uint32_t>(mapping_, kOffPublishedIndex);
+    auto* sfcAtomic = atomicAt<uint32_t>(mapping_, kOffIOSurfaceID);
     auto* fpAtomic  = atomicAt<uint64_t>(mapping_, kOffFramesProduced);
 
     // Sequence-lock read: retry up to 64 times.
@@ -121,18 +113,9 @@ FrameSnapshot SharedFrameReader::copyLatestFrame() {
             continue;
         }
 
-        uint32_t idx  = idxAtomic->load(std::memory_order_acquire);
-        uint64_t pts  = hdr->presentationTimeNs;
-        uint64_t fp   = fpAtomic->load(std::memory_order_acquire);
-
-        if (idx >= IRIS_BUFFER_COUNT) break;
-
-        const uint8_t* src = static_cast<const uint8_t*>(
-            iris_frame_ptr(mapping_, bufSize, idx)
-        );
-
-        std::vector<uint8_t> pixels(bufSize);
-        std::memcpy(pixels.data(), src, bufSize);
+        uint32_t sfcID = sfcAtomic->load(std::memory_order_acquire);
+        uint64_t pts   = hdr->presentationTimeNs;
+        uint64_t fp    = fpAtomic->load(std::memory_order_acquire);
 
         uint64_t seqB = seqAtomic->load(std::memory_order_acquire);
         if (seqA != seqB) continue;   // Torn read — retry.
@@ -143,7 +126,7 @@ FrameSnapshot SharedFrameReader::copyLatestFrame() {
         snap.bytesPerRow    = bpr;
         snap.ptsNs          = pts;
         snap.framesProduced = fp;
-        snap.data           = std::move(pixels);
+        snap.ioSurfaceID    = sfcID;
         return snap;
     }
 
@@ -154,62 +137,4 @@ bool SharedFrameReader::isProducerStale() const {
     if (!mapping_) return true;
     auto* hdr = header();
     return (monoNs() - hdr->presentationTimeNs) > IRIS_STALE_THRESHOLD_NS;
-}
-
-FrameInfo SharedFrameReader::copyLatestFrameInto(void* dst, size_t dstBytesPerRow, size_t dstSize) {
-    FrameInfo info;
-    if (!mapping_ || !dst) return info;
-
-    auto* hdr = header();
-    if (hdr->magic != IRIS_MAGIC || hdr->version != IRIS_VERSION) return info;
-
-    const uint32_t bufSize = hdr->bufferSize;
-    const uint32_t bpr     = hdr->bytesPerRow;
-    const uint32_t w       = hdr->width;
-    const uint32_t h       = hdr->height;
-
-    if (dstBytesPerRow < bpr || dstSize < dstBytesPerRow * h) return info;
-
-    auto* seqAtomic = atomicAt<uint64_t>(mapping_, kOffSequence);
-    auto* idxAtomic = atomicAt<uint32_t>(mapping_, kOffPublishedIndex);
-    auto* fpAtomic  = atomicAt<uint64_t>(mapping_, kOffFramesProduced);
-
-    // Sequence-lock read: retry up to 64 times.
-    for (int attempt = 0; attempt < 64; ++attempt) {
-        uint64_t seqA = seqAtomic->load(std::memory_order_acquire);
-        if (seqA & 1u) {
-            sched_yield();
-            continue;
-        }
-
-        uint32_t idx = idxAtomic->load(std::memory_order_acquire);
-        uint64_t pts = hdr->presentationTimeNs;
-        uint64_t fp  = fpAtomic->load(std::memory_order_acquire);
-
-        if (idx >= IRIS_BUFFER_COUNT) break;
-
-        const uint8_t* src = static_cast<const uint8_t*>(
-            iris_frame_ptr(mapping_, bufSize, idx)
-        );
-        uint8_t* out = static_cast<uint8_t*>(dst);
-        // The stream and CVPixelBuffer may use different strides. Copy each
-        // source row into the destination row rather than treating both as a
-        // contiguous image.
-        for (uint32_t row = 0; row < h; ++row) {
-            std::memcpy(out + row * dstBytesPerRow, src + row * bpr, bpr);
-        }
-
-        uint64_t seqB = seqAtomic->load(std::memory_order_acquire);
-        if (seqA != seqB) continue;   // Torn read — retry.
-
-        info.valid          = true;
-        info.width          = w;
-        info.height         = h;
-        info.bytesPerRow    = bpr;
-        info.ptsNs          = pts;
-        info.framesProduced = fp;
-        return info;
-    }
-
-    return info;
 }

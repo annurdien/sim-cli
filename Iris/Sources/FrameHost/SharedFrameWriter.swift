@@ -1,20 +1,13 @@
 // SharedFrameWriter.swift
-// Creates and manages the shared-memory triple-buffer that the injector reads.
+// Creates and manages the shared-memory file and IOSurface-backed pixel buffer pool.
 
 import Foundation
 import Darwin
 import CoreVideo
+import IOSurface
 import IrisShared
 
-/// Writes BGRA frames into a memory-mapped triple-buffer file.
-///
-/// Layout (offsets):
-///   [0 ..< 128]           IRISStreamHeader
-///   [128 ..< 128+N]       Frame buffer 0
-///   [128+N ..< 128+2N]    Frame buffer 1
-///   [128+2N ..< 128+3N]   Frame buffer 2
-///
-/// where N = header.bufferSize.
+/// Writes IOSurfaceIDs into a memory-mapped header.
 final class SharedFrameWriter {
 
     // MARK: - State
@@ -22,7 +15,13 @@ final class SharedFrameWriter {
     private let path: String
     private var mapping: UnsafeMutableRawPointer?
     private var mappingSize: Int = 0
-    private var frameSize: Int = 0
+
+    private var pool: CVPixelBufferPool?
+    private var poolWidth: Int = 0
+    private var poolHeight: Int = 0
+    
+    // Retain buffers so their IOSurfaces stay alive long enough for the consumer to read them.
+    private var retainedBuffers: [CVPixelBuffer] = []
 
     // MARK: - Init / Teardown
 
@@ -35,9 +34,7 @@ final class SharedFrameWriter {
     }
 
     func open(width: Int, height: Int) throws {
-        let bytesPerRow = ImageSource.alignedBytesPerRow(width)
-        let bufSize = bytesPerRow * height
-        let totalSize = 128 + 3 * bufSize     // header (128 B) + 3 × frame
+        let totalSize = Int(IRIS_HEADER_EXPECTED_SIZE) // Just 128 bytes
 
         var fd = Darwin.open(path, O_RDWR)
         var needsInit = false
@@ -81,7 +78,6 @@ final class SharedFrameWriter {
 
         mapping = ptr
         mappingSize = totalSize
-        frameSize = bufSize
 
         let hdr = ptr.bindMemory(to: IRISStreamHeader.self, capacity: 1)
         if needsInit {
@@ -89,19 +85,46 @@ final class SharedFrameWriter {
             hdr.pointee.version      = IRIS_VERSION
             hdr.pointee.width        = UInt32(width)
             hdr.pointee.height       = UInt32(height)
+            let bytesPerRow = ImageSource.alignedBytesPerRow(width)
             hdr.pointee.bytesPerRow  = UInt32(bytesPerRow)
             hdr.pointee.pixelFormat  = IRIS_PIXEL_FORMAT
-            hdr.pointee.bufferCount  = IRIS_BUFFER_COUNT
-            hdr.pointee.bufferSize   = UInt32(bufSize)
-            // sequence, publishedIndex, framesProduced remain 0 from ftruncate.
         } else {
-            // If we reused the file, the previous FrameHost might have died in the middle of a write.
-            // If the sequence lock is odd (write in progress), force it to even.
+            // If we reused the file, repair sequence lock if odd
             let seq = iris_seq_load_acquire(ptr)
             if seq % 2 != 0 {
                 iris_seq_store_release(ptr, seq &+ 1)
             }
         }
+        
+        ensurePool(width: width, height: height)
+    }
+
+    private func ensurePool(width: Int, height: Int) {
+        if pool != nil && poolWidth == width && poolHeight == height { return }
+        pool = nil
+        retainedBuffers.removeAll()
+        poolWidth = width
+        poolHeight = height
+
+        let poolAttributes: [String: Any] = [
+            kCVPixelBufferPoolMinimumBufferCountKey as String: 6
+        ]
+        
+        let bytesPerRow = ImageSource.alignedBytesPerRow(width)
+
+        let bufferAttributes: [String: Any] = [
+            kCVPixelBufferPixelFormatTypeKey as String: Int(IRIS_PIXEL_FORMAT),
+            kCVPixelBufferWidthKey as String: width,
+            kCVPixelBufferHeightKey as String: height,
+            kCVPixelBufferBytesPerRowAlignmentKey as String: Int(IRIS_ROW_ALIGNMENT),
+            kCVPixelBufferIOSurfacePropertiesKey as String: ["IOSurfaceIsGlobal": true], // Global surface for cross-process
+            kCVPixelBufferCGImageCompatibilityKey as String: true,
+            kCVPixelBufferCGBitmapContextCompatibilityKey as String: true
+        ]
+
+        var newPool: CVPixelBufferPool?
+        CVPixelBufferPoolCreate(kCFAllocatorDefault, poolAttributes as CFDictionary, bufferAttributes as CFDictionary, &newPool)
+        self.pool = newPool
     }
 
     /// Closes the mapping and removes the shared file.
@@ -110,100 +133,83 @@ final class SharedFrameWriter {
             munmap(mapping, mappingSize)
         }
         mapping = nil
+        pool = nil
+        retainedBuffers.removeAll()
         try? FileManager.default.removeItem(atPath: path)
     }
 
     // MARK: - Publishing
 
     /// Publishes one BGRA frame using the sequence-lock algorithm.
-    /// - Parameter frame: The BGRA frame to publish.
-    /// - Parameter pts:   Presentation timestamp in nanoseconds (monotonic).
     func publish(frame: BGRAFrame, pts: UInt64) throws {
-        guard let base = mapping else {
-            throw WriterError.notOpen
+        guard let _ = mapping, let pool = pool else { throw WriterError.notOpen }
+        
+        var pixelBuffer: CVPixelBuffer?
+        guard CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pool, &pixelBuffer) == kCVReturnSuccess,
+              let pixBuf = pixelBuffer else { return }
+
+        CVPixelBufferLockBaseAddress(pixBuf, [])
+        if let dest = CVPixelBufferGetBaseAddress(pixBuf) {
+            _ = frame.data.withUnsafeBytes { src in
+                memcpy(dest, src.baseAddress!, frame.data.count)
+            }
         }
+        CVPixelBufferUnlockBaseAddress(pixBuf, [])
 
-        // Pick a buffer index that is NOT currently the published one.
-        let currentPublished = Int(iris_idx_load_acquire(base))
-        let writeIndex = (currentPublished + 1) % 3
-
-        // --- Sequence lock: begin write (seq → odd) ---
-        // Canonical pattern: read seq, store seq+1 (odd = write in progress).
-        // On completion store seq+2 (even, advanced). Never re-read in between.
-        let seqBefore = iris_seq_load_acquire(base)
-        iris_seq_store_release(base, seqBefore &+ 1)
-
-        // --- Copy frame data ---
-        let dest = base.advanced(by: 128 + writeIndex * frameSize)
-        _ = frame.data.withUnsafeBytes { src in
-            memcpy(dest, src.baseAddress!, frame.data.count)
-        }
-
-        // --- Update presentation timestamp (plain write, protected by seq lock) ---
-        let hdr = base.bindMemory(to: IRISStreamHeader.self, capacity: 1)
-        hdr.pointee.presentationTimeNs = pts
-
-        // --- Publish buffer index ---
-        iris_idx_store_relaxed(base, UInt32(writeIndex))
-
-        // --- Sequence lock: end write (seq → even, advanced by 2 total) ---
-        iris_seq_store_release(base, seqBefore &+ 2)
-
-        // --- Increment frame counter ---
-        _ = iris_fp_fetch_add(base, 1)
+        try publish(poolBuffer: pixBuf, pts: pts)
     }
 
-    /// Publishes one BGRA frame directly from a CVPixelBuffer (zero-copy).
-    /// - Parameter pixelBuffer: A CVPixelBuffer (must be kCVPixelFormatType_32BGRA).
-    /// - Parameter pts:         Presentation timestamp in nanoseconds.
+    /// Publishes one BGRA frame directly from a CVPixelBuffer (zero-copy if possible).
     func publish(pixelBuffer: CVPixelBuffer, pts: UInt64) throws {
-        guard let base = mapping else {
-            throw WriterError.notOpen
-        }
+        guard let pool = pool else { throw WriterError.notOpen }
+        
+        var newBuffer: CVPixelBuffer?
+        guard CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pool, &newBuffer) == kCVReturnSuccess,
+              let pixBuf = newBuffer else { return }
 
-        // Lock the base address for reading
         CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
-        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
-
-        guard let srcBaseAddress = CVPixelBufferGetBaseAddress(pixelBuffer) else {
-            return
+        CVPixelBufferLockBaseAddress(pixBuf, [])
+        
+        if let srcBase = CVPixelBufferGetBaseAddress(pixelBuffer), let dstBase = CVPixelBufferGetBaseAddress(pixBuf) {
+            let srcBPR = CVPixelBufferGetBytesPerRow(pixelBuffer)
+            let dstBPR = CVPixelBufferGetBytesPerRow(pixBuf)
+            let srcHeight = CVPixelBufferGetHeight(pixelBuffer)
+            let dstHeight = CVPixelBufferGetHeight(pixBuf)
+            let copyHeight = min(srcHeight, dstHeight)
+            let copyBytes = min(CVPixelBufferGetWidth(pixelBuffer), CVPixelBufferGetWidth(pixBuf)) * 4
+            
+            for row in 0..<copyHeight {
+                memcpy(dstBase.advanced(by: row * dstBPR), srcBase.advanced(by: row * srcBPR), copyBytes)
+            }
         }
+        
+        CVPixelBufferUnlockBaseAddress(pixBuf, [])
+        CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly)
 
-        let currentPublished = Int(iris_idx_load_acquire(base))
-        let writeIndex = (currentPublished + 1) % 3
+        try publish(poolBuffer: pixBuf, pts: pts)
+    }
+
+    private func publish(poolBuffer: CVPixelBuffer, pts: UInt64) throws {
+        guard let base = mapping else { throw WriterError.notOpen }
+
+        guard let ioSurface = CVPixelBufferGetIOSurface(poolBuffer) else { return }
+        let surfaceID = IOSurfaceGetID(ioSurface.takeUnretainedValue())
 
         let seqBefore = iris_seq_load_acquire(base)
         iris_seq_store_release(base, seqBefore &+ 1)
 
-        // We must copy row-by-row to handle stride (bytesPerRow) differences
-        // between the camera's CVPixelBuffer and our shared memory.
-        let srcBPR = CVPixelBufferGetBytesPerRow(pixelBuffer)
-        let srcWidth = CVPixelBufferGetWidth(pixelBuffer)
-        let srcHeight = CVPixelBufferGetHeight(pixelBuffer)
-
         let hdr = base.bindMemory(to: IRISStreamHeader.self, capacity: 1)
-        let dstWidth = Int(hdr.pointee.width)
-        let dstHeight = Int(hdr.pointee.height)
-        let dstBPR = Int(hdr.pointee.bytesPerRow)
-
-        let copyWidth = min(srcWidth, dstWidth)
-        let copyHeight = min(srcHeight, dstHeight)
-        let bytesToCopy = copyWidth * 4
-
-        let destBase = base.advanced(by: 128 + writeIndex * frameSize)
-
-        for row in 0..<copyHeight {
-            let srcRow = srcBaseAddress.advanced(by: row * srcBPR)
-            let dstRow = destBase.advanced(by: row * dstBPR)
-            memcpy(dstRow, srcRow, bytesToCopy)
-        }
-
         hdr.pointee.presentationTimeNs = pts
 
-        iris_idx_store_relaxed(base, UInt32(writeIndex))
-        iris_seq_store_release(base, seqBefore &+ 2)
+        iris_iosfc_store_relaxed(base, surfaceID)
 
+        iris_seq_store_release(base, seqBefore &+ 2)
         _ = iris_fp_fetch_add(base, 1)
+
+        retainedBuffers.append(poolBuffer)
+        if retainedBuffers.count > 3 {
+            retainedBuffers.removeFirst()
+        }
     }
 
     /// Returns the number of frames successfully published so far.
