@@ -18,7 +18,6 @@
 
 #define IRIS_MAGIC         0x4D534343u   // "MSCC"
 #define IRIS_VERSION       1u
-#define IRIS_BUFFER_COUNT  3u
 
 // kCVPixelFormatType_32BGRA = 0x42475241 = 'BGRA'
 #define IRIS_PIXEL_FORMAT  0x42475241u
@@ -37,10 +36,10 @@
 //   [ 12] uint32_t height
 //   [ 16] uint32_t bytesPerRow
 //   [ 20] uint32_t pixelFormat
-//   [ 24] uint32_t bufferCount
-//   [ 28] uint32_t bufferSize
+//   [ 24] uint32_t _pad1           ← explicit padding for alignment
+//   [ 28] uint32_t _pad2           ← explicit padding for alignment
 //   [ 32] uint64_t sequence        ← ATOMIC, use iris_seq_*()
-//   [ 40] uint32_t publishedIndex  ← ATOMIC, use iris_idx_*()
+//   [ 40] uint32_t ioSurfaceID     ← ATOMIC, use iris_iosfc_*()
 //   [ 44] uint32_t _pad0           ← explicit padding for alignment
 //   [ 48] uint64_t presentationTimeNs  (plain, written under seq lock)
 //   [ 56] uint64_t framesProduced  ← ATOMIC, use iris_fp_*()
@@ -54,10 +53,10 @@ typedef struct {
     uint32_t height;               // [ 12]
     uint32_t bytesPerRow;          // [ 16]
     uint32_t pixelFormat;          // [ 20]
-    uint32_t bufferCount;          // [ 24]
-    uint32_t bufferSize;           // [ 28]
+    uint32_t _pad1;                // [ 24]
+    uint32_t _pad2;                // [ 28]
     uint64_t sequence;             // [ 32] ATOMIC — use iris_seq_*()
-    uint32_t publishedIndex;       // [ 40] ATOMIC — use iris_idx_*()
+    uint32_t ioSurfaceID;          // [ 40] ATOMIC — use iris_iosfc_*()
     uint32_t _pad0;                // [ 44] explicit pad
     uint64_t presentationTimeNs;   // [ 48]
     uint64_t framesProduced;       // [ 56] ATOMIC — use iris_fp_*()
@@ -66,7 +65,7 @@ typedef struct {
 
 // Byte offsets used by AtomicHelpers.c must match the layout above.
 #define IRIS_OFF_SEQUENCE        32u
-#define IRIS_OFF_PUBLISHED_INDEX 40u
+#define IRIS_OFF_IOSURFACE_ID    40u
 #define IRIS_OFF_FRAMES_PRODUCED 56u
 
 // Compile-time size check (C11 _Static_assert).
@@ -82,13 +81,7 @@ static inline uint32_t iris_bytes_per_row(uint32_t width) {
     return (raw + IRIS_ROW_ALIGNMENT - 1u) & ~(IRIS_ROW_ALIGNMENT - 1u);
 }
 
-// Total mmap size: header + 3 * bufferSize.
-static inline uint64_t iris_mapping_size(uint32_t bufferSize) {
-    return (uint64_t)IRIS_HEADER_EXPECTED_SIZE + (uint64_t)IRIS_BUFFER_COUNT * bufferSize;
-}
-
-// Pointer to frame buffer N inside a mapped region.
-static inline void *iris_frame_ptr(void *base, uint32_t bufferSize, uint32_t index) {
-    uint8_t *p = (uint8_t *)base;
-    return p + IRIS_HEADER_EXPECTED_SIZE + (uint64_t)bufferSize * index;
+// Total mmap size: just the header.
+static inline uint64_t iris_mapping_size(void) {
+    return (uint64_t)IRIS_HEADER_EXPECTED_SIZE;
 }

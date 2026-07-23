@@ -60,7 +60,8 @@ let package = Package(
                 .linkedFramework("Foundation"),
                 .linkedFramework("CoreGraphics"),
                 .linkedFramework("VideoToolbox"),
-                .linkedFramework("QuartzCore")
+                .linkedFramework("QuartzCore"),
+                .linkedFramework("IOSurface")
             ]
         ),
         .testTarget(
