@@ -47,7 +47,7 @@ final class FrameLoop {
     private var startDate: Date = .now
     private var lastPublishNs: UInt64 = 0
     private var framesProducedLocal: UInt64 = 0
-    private let queue = DispatchQueue(label: "com.minisimcam.frameloop", qos: .userInteractive)
+    private let queue = DispatchQueue(label: "com.iris.frameloop", qos: .userInteractive)
 
     // Status throttle: write at most once per second.
     private var lastStatusWriteNs: UInt64 = 0

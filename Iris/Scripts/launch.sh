@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# launch.sh — Launches an app on the booted simulator with MiniCamInject loaded.
+# launch.sh — Launches an app on the booted simulator with IrisInject loaded.
 # Usage: ./launch.sh <bundle-id> [udid]
 set -euo pipefail
 
@@ -13,11 +13,11 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$SCRIPT_DIR/.."
-DYLIB="$PROJECT_DIR/.build/injector/MiniCamInject.dylib"
-SHM_PATH="/tmp/minisimcam.${UDID}.frames"
+DYLIB="$PROJECT_DIR/.build/injector/IrisInject.dylib"
+SHM_PATH="/tmp/iris.${UDID}.frames"
 
 if [[ ! -f "$DYLIB" ]]; then
-    echo "⚠️  MiniCamInject.dylib not found. Run 'sim cam build' first." >&2
+    echo "⚠️  IrisInject.dylib not found. Run 'sim cam build' first." >&2
     exit 1
 fi
 
@@ -26,5 +26,5 @@ echo "  dylib: $DYLIB"
 echo "  shm:   $SHM_PATH"
 
 SIMCTL_CHILD_DYLD_INSERT_LIBRARIES="$DYLIB" \
-SIMCTL_CHILD_MINISIMCAM_PATH="$SHM_PATH" \
+SIMCTL_CHILD_IRIS_PATH="$SHM_PATH" \
 xcrun simctl launch "$UDID" "$BUNDLE_ID"
