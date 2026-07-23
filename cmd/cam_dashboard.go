@@ -694,7 +694,7 @@ func launchAppWithCam(udid, bundleID string) error {
 	mscDir := miniSimCamDir()
 	dylib := injectorDylib(mscDir)
 	if _, err := os.Stat(dylib); err != nil {
-		return fmt.Errorf("MiniCamInject.dylib not found")
+		return fmt.Errorf("IrisInject.dylib not found")
 	}
 
 	shm := shmPath(udid)
@@ -703,8 +703,8 @@ func launchAppWithCam(udid, bundleID string) error {
 	c := exec.Command("xcrun", "simctl", "launch", udid, bundleID)
 	c.Env = append(os.Environ(),
 		"SIMCTL_CHILD_DYLD_INSERT_LIBRARIES="+dylib,
-		"SIMCTL_CHILD_MINISIMCAM_PATH="+shm,
-		"SIMCTL_CHILD_MINISIMCAM_FPS="+fmt.Sprintf("%d", fps),
+		"SIMCTL_CHILD_IRIS_PATH="+shm,
+		"SIMCTL_CHILD_IRIS_FPS="+fmt.Sprintf("%d", fps),
 	)
 	return c.Run()
 }

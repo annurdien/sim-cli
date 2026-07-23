@@ -19,14 +19,14 @@ flowchart TD
             SharedFrameWriter["SharedFrameWriter"]
         end
         
-        SHM[/"/tmp/minisimcam.<udid>.frames (Shared Memory)"/]
+        SHM[/"/tmp/iris.<udid>.frames (Shared Memory)"/]
     end
 
     subgraph Sim["iOS Simulator"]
         subgraph App["Target iOS App"]
             AVFoundation["AVFoundation"]
             
-            subgraph Injector["MiniCamInject.dylib"]
+            subgraph Injector["IrisInject.dylib"]
                 Swizzler["Swizzler"]
                 SharedFrameReader["SharedFrameReader"]
                 SampleBufferFactory["SampleBufferFactory"]
@@ -57,7 +57,7 @@ Standard IPC mechanisms like XPC, Mach ports, or local UNIX sockets require seri
 Memory mapping maps a file directly into the virtual memory space of both the macOS `FrameHost` process and the iOS Simulator app process. When `FrameHost` writes a pixel to this memory region, the iOS app can read that exact byte instantly. This enables zero-copy data transfer.
 
 ### Memory Layout
-The shared memory file consists of a 128-byte header (`MSCStreamHeader`), immediately followed by a triple-buffer of raw BGRA pixel data.
+The shared memory file consists of a 128-byte header (`IRISStreamHeader`), immediately followed by a triple-buffer of raw BGRA pixel data.
 
 ```c
 typedef struct {
@@ -75,11 +75,11 @@ typedef struct {
     uint64_t presentationTimeNs;   // Frame PTS (Nanoseconds)
     uint64_t framesProduced;       // ATOMIC: Total frames produced
     uint8_t  reserved[64];         // Future expansion padding
-} MSCStreamHeader;                 // Exactly 128 bytes
+} IRISStreamHeader;                 // Exactly 128 bytes
 ```
 
 ### The Lock-Free Algorithm
-Because the producer (`FrameHost`) and consumer (`MiniCamInject`) run in separate processes, they need a way to coordinate. If `FrameHost` writes data while the app is reading it, the video frame tears (the top half of the old frame mixed with the bottom half of the new frame).
+Because the producer (`FrameHost`) and consumer (`IrisInject`) run in separate processes, they need a way to coordinate. If `FrameHost` writes data while the app is reading it, the video frame tears (the top half of the old frame mixed with the bottom half of the new frame).
 
 **The Design Decision:**
 We cannot use standard POSIX mutexes (`pthread_mutex_t`). If the user stops the camera and `sim-cli` kills `FrameHost` via `SIGKILL` while it holds a shared mutex, the mutex is permanently locked. The iOS app would wait on that lock forever and freeze. 
@@ -90,7 +90,7 @@ Instead, `sim-cli` uses a **Sequence Lock** (SeqLock) implementation with C++20 
 sequenceDiagram
     participant P as FrameHost<br>(Producer)
     participant SHM as Shared Memory
-    participant C as MiniCamInject<br>(Consumer)
+    participant C as IrisInject<br>(Consumer)
 
     %% Producer Write
     Note over P, C: Producer Write
@@ -120,7 +120,7 @@ sequenceDiagram
 ```
 
 1. **Producer writes:** `FrameHost` extracts raw BGRA pointers from the Mac's hardware camera. It atomically increments the `sequence` integer to an **odd** number, signaling a write is in progress. It copies the frame into an inactive buffer slot, updates `publishedIndex`, and increments `sequence` to an **even** number.
-2. **Consumer reads:** `MiniCamInject` polls the `sequence` integer. If it is even, it begins reading the frame from `publishedIndex`. After the memory copy finishes, it checks `sequence` again. If `sequence` changed during the read, a torn read occurred. The consumer discards the bad frame and retries instantly.
+2. **Consumer reads:** `IrisInject` polls the `sequence` integer. If it is even, it begins reading the frame from `publishedIndex`. After the memory copy finishes, it checks `sequence` again. If `sequence` changed during the read, a torn read occurred. The consumer discards the bad frame and retries instantly.
 
 ---
 
@@ -138,16 +138,16 @@ sequenceDiagram
     participant LaunchCtl as launchctl
     participant Host as FrameHost
     participant App as iOS App
-    participant Inject as MiniCamInject
+    participant Inject as IrisInject
     participant AV as AVCaptureSession
 
     User->>CLI: sim cam start
     CLI->>Host: spawn(udid)
     activate Host
-    Host->>Host: allocate /tmp/minisimcam.<udid>.frames
+    Host->>Host: allocate /tmp/iris.<udid>.frames
     Host->>Host: start AVFoundation capture
     CLI->>LaunchCtl: setenv DYLD_INSERT_LIBRARIES
-    CLI->>LaunchCtl: setenv MINISIMCAM_PATH
+    CLI->>LaunchCtl: setenv IRIS_PATH
 
     User->>App: launches app
     activate App
@@ -161,21 +161,21 @@ sequenceDiagram
     AV->>Inject: msc_startRunning() (intercepted)
     activate Inject
     Inject->>Inject: setup GCD background queue
-    Inject->>Inject: mmap(/tmp/minisimcam.<udid>.frames)
+    Inject->>Inject: mmap(/tmp/iris.<udid>.frames)
     deactivate Inject
 ```
 
 ### Global Injection Mechanics
 When you start a camera via `sim-cli cam start`, the CLI executes `xcrun simctl spawn <udid> launchctl setenv`. This modifies the global environment of the booted iOS Simulator. 
-- `DYLD_INSERT_LIBRARIES=/path/to/MiniCamInject.dylib`: Forces the Apple dynamic linker (`dyld`) to load our library into every app launched on the simulator before the app's `main()` function executes.
-- `MINISIMCAM_PATH`: Passes the path of the shared memory file so the dylib knows where to read frames.
+- `DYLD_INSERT_LIBRARIES=/path/to/IrisInject.dylib`: Forces the Apple dynamic linker (`dyld`) to load our library into every app launched on the simulator before the app's `main()` function executes.
+- `IRIS_PATH`: Passes the path of the shared memory file so the dylib knows where to read frames.
 
 Because this is set globally via `launchctl`, *any* app launched on the simulator automatically receives the injection.
 
 ### Objective-C Method Swizzling
 Objective-C allows developers to change the mapping between a method name (selector) and its underlying C function (implementation) at runtime. This technique is known as Method Swizzling.
 
-Inside `MiniCamInject.dylib`, a C constructor function (`__attribute__((constructor))`) runs immediately upon load. It uses the Objective-C runtime function `method_exchangeImplementations` to swap the memory addresses of Apple's internal `AVCaptureSession` methods with our custom implementations.
+Inside `IrisInject.dylib`, a C constructor function (`__attribute__((constructor))`) runs immediately upon load. It uses the Objective-C runtime function `method_exchangeImplementations` to swap the memory addresses of Apple's internal `AVCaptureSession` methods with our custom implementations.
 
 When the iOS app calls `[session startRunning]`, execution jumps to our code. The code bypasses Apple's hardware initialization, creates a Grand Central Dispatch (GCD) background thread, and begins reading frames from the shared memory.
 
@@ -277,7 +277,7 @@ flowchart TD
 
     subgraph Sim["iOS Simulator"]
         subgraph App["Target iOS App"]
-            subgraph Injector["MiniCamInject.dylib"]
+            subgraph Injector["IrisInject.dylib"]
                 VNODE["VNODE File Monitor"]
                 IOSurfaceReader["IOSurface Lookup"]
                 ControlWriter["Control Message Writer"]
@@ -309,4 +309,4 @@ Instead of using a POSIX shared memory file for raw BGRA bytes (which requires `
 To fix the limitation where resolution changes freeze the camera feed, the iOS app's `SharedFrameReader` could implement a Grand Central Dispatch (GCD) `DISPATCH_SOURCE_TYPE_VNODE` monitor. This allows the iOS app to listen for `NOTE_DELETE` or `NOTE_RENAME` events on the shared memory file. If `sim-cli` deletes the file to change resolutions, the app detects it instantly, closes the old memory map, and `mmap`s the new file on the fly—making camera swapping perfectly seamless.
 
 ### 3. Bidirectional Control Channel
-Currently, data flows one way (macOS → iOS). By adding a lock-free **Control Ring-Buffer** in the shared memory header, the iOS app could send camera control events *back* to macOS. If the user taps the "Flip Camera" button or taps to focus inside the iOS Simulator, `MiniCamInject` could write those events to the control buffer. `FrameHost` would read them and automatically switch from the Mac's FaceTime camera to a plugged-in DSLR or adjust the hardware focus, making the injection truly interactive.
+Currently, data flows one way (macOS → iOS). By adding a lock-free **Control Ring-Buffer** in the shared memory header, the iOS app could send camera control events *back* to macOS. If the user taps the "Flip Camera" button or taps to focus inside the iOS Simulator, `IrisInject` could write those events to the control buffer. `FrameHost` would read them and automatically switch from the Mac's FaceTime camera to a plugged-in DSLR or adjust the hardware focus, making the injection truly interactive.

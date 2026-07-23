@@ -44,11 +44,11 @@ recording_*.mp4
 /tmp/coverage.out
 coverage.html
 
-# MiniSimCam
-MiniSimCam/.build/
-MiniSimCam/Example/CameraPreviewApp/build/
-MiniSimCam/Example/CameraPreviewApp/module_cache/
-MiniSimCam/module_cache/
+# Iris
+Iris/.build/
+Iris/Example/CameraPreviewApp/build/
+Iris/Example/CameraPreviewApp/module_cache/
+Iris/module_cache/
 module_cache/
 cmd/assets/
 

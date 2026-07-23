@@ -1,6 +1,0 @@
-module MiniSimCamShared {
-    header "MiniCamProtocol.h"
-    header "MiniCamConstants.h"
-    header "AtomicHelpers.h"
-    export *
-}

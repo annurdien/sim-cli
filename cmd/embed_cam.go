@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 )
 
-//go:embed assets/FrameHost assets/MiniCamInject.dylib
+//go:embed assets/FrameHost assets/IrisInject.dylib
 var embeddedAssets embed.FS
 
 // ensureExtractedAssets extracts embedded assets to ~/.sim-cli/bin/ if valid.
@@ -32,7 +32,7 @@ func ensureExtractedAssets() (string, error) {
 		mode         os.FileMode
 	}{
 		{"assets/FrameHost", "FrameHost", 0755},
-		{"assets/MiniCamInject.dylib", "MiniCamInject.dylib", 0644},
+		{"assets/IrisInject.dylib", "IrisInject.dylib", 0644},
 	}
 
 	for _, f := range files {

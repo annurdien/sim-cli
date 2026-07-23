@@ -22,18 +22,18 @@ import (
 // Paths & helpers
 // ---------------------------------------------------------------------------
 
-// camMscDir is an optional override for the MiniSimCam directory.
-var camMscDir string
+// camIrisDir is an optional override for the MiniSimCam directory.
+var camIrisDir string
 
 func miniSimCamDir() string {
-	if camMscDir != "" {
-		return camMscDir
+	if camIrisDir != "" {
+		return camIrisDir
 	}
 	ex, _ := os.Executable()
-	// Walk up to the project root where MiniSimCam/ lives.
+	// Walk up to the project root where Iris/ lives.
 	dir := filepath.Dir(ex)
 	for i := 0; i < 4; i++ {
-		candidate := filepath.Join(dir, "MiniSimCam")
+		candidate := filepath.Join(dir, "Iris")
 		if _, err := os.Stat(candidate); err == nil {
 			return candidate
 		}
@@ -41,17 +41,17 @@ func miniSimCamDir() string {
 	}
 	// Fall back to CWD/MiniSimCam.
 	cwd, _ := os.Getwd()
-	return filepath.Join(cwd, "MiniSimCam")
+	return filepath.Join(cwd, "Iris")
 }
 
-func shmPath(udid string) string     { return fmt.Sprintf("/tmp/minisimcam.%s.frames", udid) }
-func pidFilePath(udid string) string { return fmt.Sprintf("/tmp/minisimcam.%s.pid", udid) }
+func shmPath(udid string) string     { return fmt.Sprintf("/tmp/iris.%s.frames", udid) }
+func pidFilePath(udid string) string { return fmt.Sprintf("/tmp/iris.%s.pid", udid) }
 func statusFilePath(udid string) string {
-	primary := fmt.Sprintf("/tmp/minisimcam.%s.status", udid)
+	primary := fmt.Sprintf("/tmp/iris.%s.status", udid)
 	if _, err := os.Stat(primary); err == nil {
 		return primary
 	}
-	secondary := filepath.Join(os.TempDir(), fmt.Sprintf("minisimcam.%s.status", udid))
+	secondary := filepath.Join(os.TempDir(), fmt.Sprintf("iris.%s.status", udid))
 	if _, err := os.Stat(secondary); err == nil {
 		return secondary
 	}
@@ -87,12 +87,12 @@ func frameHostBin(mscDir string) string {
 
 func injectorDylib(mscDir string) string {
 	if binDir := resolveEmbeddedBinDir(); binDir != "" {
-		extracted := filepath.Join(binDir, "MiniCamInject.dylib")
+		extracted := filepath.Join(binDir, "IrisInject.dylib")
 		if _, err := os.Stat(extracted); err == nil {
 			return extracted
 		}
 	}
-	return filepath.Join(mscDir, ".build", "injector", "MiniCamInject.dylib")
+	return filepath.Join(mscDir, ".build", "injector", "IrisInject.dylib")
 }
 
 func findRunningIOSSimulator(deviceID string) (udid, name string, err error) {
@@ -101,7 +101,7 @@ func findRunningIOSSimulator(deviceID string) (udid, name string, err error) {
 		return "", "", err
 	}
 	if isAndroid {
-		return "", "", fmt.Errorf("MiniSimCam only supports booted iOS Simulators, not Android emulators")
+		return "", "", fmt.Errorf("Iris only supports booted iOS Simulators, not Android emulators")
 	}
 	return udid, name, nil
 }
@@ -159,10 +159,10 @@ func frameHostFPS(udid string) int {
 var camCmd = &cobra.Command{
 	Use:   "cam",
 	Short: "iOS Simulator camera injector",
-	Long: `MiniSimCam — inject synthetic camera frames into an iOS Simulator app.
+	Long: `Iris — inject synthetic camera frames into an iOS Simulator app.
 
 The cam group manages a macOS FrameHost process that writes BGRA frames to
-shared memory. A dylib (MiniCamInject) loaded into your simulator app reads
+shared memory. A dylib (IrisInject) loaded into your simulator app reads
 those frames and delivers them as CMSampleBuffer callbacks.
 
 Quick start:
@@ -354,8 +354,8 @@ var (
 
 var camLaunchCmd = &cobra.Command{
 	Use:   "launch",
-	Short: "Launch an app on the simulator with MiniCamInject loaded",
-	Long: `Launches your app on the booted iOS Simulator with MiniCamInject.dylib
+	Short: "Launch an app on the simulator with IrisInject loaded",
+	Long: `Launches your app on the booted iOS Simulator with IrisInject.dylib
 injected via SIMCTL_CHILD_DYLD_INSERT_LIBRARIES.
 
 The FrameHost must be running first (sim cam start).
@@ -378,7 +378,7 @@ Example:
 		mscDir := miniSimCamDir()
 		dylib := injectorDylib(mscDir)
 		if _, err := os.Stat(dylib); err != nil {
-			return fmt.Errorf("MiniCamInject.dylib not found — run 'sim cam build' first (or use a release build with embedded binaries)")
+			return fmt.Errorf("IrisInject.dylib not found — run 'sim cam build' first (or use a release build with embedded binaries)")
 		}
 
 		shm := shmPath(udid)
@@ -403,7 +403,7 @@ Example:
 				} else {
 					entXML = `<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>com.apple.security.get-task-allow</key><true/></dict></plist>`
 				}
-				entPath := filepath.Join(os.TempDir(), "minisimcam_entitlements.plist")
+				entPath := filepath.Join(os.TempDir(), "iris_entitlements.plist")
 				if writeErr := os.WriteFile(entPath, []byte(entXML), 0o644); writeErr != nil {
 					PrintInfo(fmt.Sprintf("  Warning: cannot write entitlements file: %v", writeErr))
 				} else if signErr := exec.Command("codesign", "-f", "-s", "-", "--entitlements", entPath, appPath).Run(); signErr != nil {
@@ -418,8 +418,8 @@ Example:
 		c.Env = append(
 			os.Environ(),
 			"SIMCTL_CHILD_DYLD_INSERT_LIBRARIES="+dylib,
-			"SIMCTL_CHILD_MINISIMCAM_PATH="+shm,
-			"SIMCTL_CHILD_MINISIMCAM_FPS="+strconv.Itoa(fps),
+			"SIMCTL_CHILD_IRIS_PATH="+shm,
+			"SIMCTL_CHILD_IRIS_FPS="+strconv.Itoa(fps),
 		)
 		c.Stdout = os.Stdout
 		c.Stderr = os.Stderr
@@ -427,7 +427,7 @@ Example:
 			return fmt.Errorf("simctl launch failed: %w", err)
 		}
 
-		PrintSuccess(fmt.Sprintf("Launched %s with MiniCamInject", camLaunchBundle))
+		PrintSuccess(fmt.Sprintf("Launched %s with IrisInject", camLaunchBundle))
 		return nil
 	},
 }
@@ -515,7 +515,7 @@ var camStatusCmd = &cobra.Command{
 
 		border := strings.Repeat("─", width+4)
 		fmt.Println("┌" + border + "┐")
-		fmt.Println("│  MiniSimCam Status" + strings.Repeat(" ", width+4-len("  MiniSimCam Status")) + "│")
+		fmt.Println("│  Iris Status" + strings.Repeat(" ", width+4-len("  Iris Status")) + "│")
 		fmt.Println("├" + border + "┤")
 		for _, l := range lines {
 			fmt.Printf("│  %-*s  │\n", width, l)
@@ -593,8 +593,8 @@ func stopFrameHost(udid string) error {
 		if udid != "" {
 			_ = os.Remove(pidPath)
 			_ = os.Remove(statusPath)
-			_ = os.Remove(fmt.Sprintf("/tmp/minisimcam.%s.pid", udid))
-			_ = os.Remove(fmt.Sprintf("/tmp/minisimcam.%s.status", udid))
+			_ = os.Remove(fmt.Sprintf("/tmp/iris.%s.pid", udid))
+			_ = os.Remove(fmt.Sprintf("/tmp/iris.%s.status", udid))
 		} else {
 			if files, err := filepath.Glob("/tmp/minisimcam.*.pid"); err == nil {
 				for _, f := range files {
@@ -643,7 +643,7 @@ func stopFrameHost(udid string) error {
 
 func init() {
 	// cam-level flag: --msc-dir override (hidden for end users)
-	camCmd.PersistentFlags().StringVar(&camMscDir, "msc-dir", "", "Path to MiniSimCam directory (default: auto-detected)")
+	camCmd.PersistentFlags().StringVar(&camIrisDir, "msc-dir", "", "Path to MiniSimCam directory (default: auto-detected)")
 	_ = camCmd.PersistentFlags().MarkHidden("msc-dir")
 
 	// start
