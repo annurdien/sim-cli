@@ -1,8 +1,8 @@
 // CameraPreviewApp.swift
 // Minimal SwiftUI example app demonstrating both Stage A (cooperative) and
-// Stage B (transparent injection) modes of MiniSimCam.
+// Stage B (transparent injection) modes of Iris.
 //
-// Stage A: Compile with MINISIMCAM_STAGE_A=1 — uses SharedMemoryCameraSource
+// Stage A: Compile with IRIS_STAGE_A=1 — uses SharedMemoryCameraSource
 // Stage B: Use normal AVFoundation; the injector dylib intercepts it.
 
 import SwiftUI
@@ -35,7 +35,7 @@ struct ContentView: View {
                 HStack {
                     Image(systemName: "camera.fill")
                         .foregroundStyle(.white)
-                    Text("MiniSimCam Preview")
+                    Text("Iris Preview")
                         .foregroundStyle(.white)
                         .font(.footnote.bold())
                     Spacer()

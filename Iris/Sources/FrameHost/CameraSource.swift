@@ -36,10 +36,10 @@ final class CameraSource: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
     // MARK: - Session state
 
     private let session = AVCaptureSession()
-    private let captureQueue = DispatchQueue(label: "com.minisimcam.cameraCapture")
+    private let captureQueue = DispatchQueue(label: "com.iris.cameraCapture")
     /// AVFoundation requires all session configuration and lifecycle operations
     /// to be serialized on one queue.
-    private let sessionQueue = DispatchQueue(label: "com.minisimcam.cameraSession")
+    private let sessionQueue = DispatchQueue(label: "com.iris.cameraSession")
     private let stateLock = NSLock()
     private let statusLock = NSLock()
 

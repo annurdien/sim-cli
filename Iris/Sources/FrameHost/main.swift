@@ -9,7 +9,7 @@ struct FrameHostCommand: ParsableCommand {
 
     static let configuration = CommandConfiguration(
         commandName: "FrameHost",
-        abstract: "MiniSimCam frame producer — writes BGRA frames to a shared-memory triple buffer.",
+        abstract: "Iris frame producer — writes BGRA frames to a shared-memory triple buffer.",
         version: "1.0.0"
     )
 
@@ -86,9 +86,9 @@ struct FrameHostCommand: ParsableCommand {
             return
         }
 
-        let shmPath    = "/tmp/minisimcam.\(udid).frames"
-        let statusPath = "/tmp/minisimcam.\(udid).status"
-        let pidPath    = "/tmp/minisimcam.\(udid).pid"
+        let shmPath    = "/tmp/iris.\(udid).frames"
+        let statusPath = "/tmp/iris.\(udid).status"
+        let pidPath    = "/tmp/iris.\(udid).pid"
 
         // Never let a previous crashed host satisfy the CLI's readiness check.
         try? FileManager.default.removeItem(atPath: statusPath)

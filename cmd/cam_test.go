@@ -96,9 +96,9 @@ func TestStopFrameHostNoFile(t *testing.T) {
 	}
 }
 
-// TestIrisDirFallback verifies that miniSimCamDir() returns a path ending in "Iris".
+// TestIrisDirFallback verifies that getIrisDir() returns a path ending in "Iris".
 func TestIrisDirFallback(t *testing.T) {
-	dir := miniSimCamDir()
+	dir := getIrisDir()
 	if filepath.Base(dir) != "Iris" {
 		t.Errorf("expected base to be Iris, got %q", filepath.Base(dir))
 	}

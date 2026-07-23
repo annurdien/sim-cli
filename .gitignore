@@ -52,6 +52,14 @@ Iris/module_cache/
 module_cache/
 cmd/assets/
 
+# Iris
+Iris/.build/
+Iris/Example/CameraPreviewApp/build/
+Iris/Example/CameraPreviewApp/module_cache/
+Iris/module_cache/
+module_cache/
+cmd/assets/
+
 # Xcode user state files (never commit)
 **/*.xcuserstate
 

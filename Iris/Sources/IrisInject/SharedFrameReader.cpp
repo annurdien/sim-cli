@@ -38,7 +38,7 @@ static const std::atomic<T>* atomicAt(const void* base, size_t offset) {
     );
 }
 
-// Offsets matching IRISStreamHeader in MiniCamProtocol.h.
+// Offsets matching IRISStreamHeader in IrisProtocol.h.
 constexpr size_t kOffSequence       = IRIS_OFF_SEQUENCE;         // 32
 constexpr size_t kOffPublishedIndex = IRIS_OFF_PUBLISHED_INDEX;  // 40
 constexpr size_t kOffFramesProduced = IRIS_OFF_FRAMES_PRODUCED;  // 56

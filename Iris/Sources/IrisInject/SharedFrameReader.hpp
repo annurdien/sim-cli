@@ -1,6 +1,6 @@
 // SharedFrameReader.hpp
 // C++ consumer for the shared-memory triple-buffer.
-// Implements the sequence-lock read algorithm defined in MiniCamProtocol.h.
+// Implements the sequence-lock read algorithm defined in IrisProtocol.h.
 
 #pragma once
 #include "IrisProtocol.h"

@@ -209,8 +209,8 @@ func fetchAppsCmd(udid string) tea.Cmd {
 }
 
 func getAvailableCameras() ([]CameraInfo, error) {
-	mscDir := miniSimCamDir()
-	bin := frameHostBin(mscDir)
+	irisDirVal := getIrisDir()
+	bin := frameHostBin(irisDirVal)
 	if _, err := os.Stat(bin); err != nil {
 		return nil, fmt.Errorf("FrameHost binary not found")
 	}
@@ -650,8 +650,8 @@ func (m camDashboardModel) View() string {
 }
 
 func startCameraForDevice(udid string, useCamera bool, imagePath string, cameraID string, width, height int) error {
-	mscDir := miniSimCamDir()
-	bin := frameHostBin(mscDir)
+	irisDirVal := getIrisDir()
+	bin := frameHostBin(irisDirVal)
 	if _, err := os.Stat(bin); err != nil {
 		return fmt.Errorf("FrameHost binary not found")
 	}
@@ -691,8 +691,8 @@ func startCameraForDevice(udid string, useCamera bool, imagePath string, cameraI
 }
 
 func launchAppWithCam(udid, bundleID string) error {
-	mscDir := miniSimCamDir()
-	dylib := injectorDylib(mscDir)
+	irisDirVal := getIrisDir()
+	dylib := injectorDylib(irisDirVal)
 	if _, err := os.Stat(dylib); err != nil {
 		return fmt.Errorf("IrisInject.dylib not found")
 	}

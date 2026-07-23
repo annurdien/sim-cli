@@ -28,7 +28,7 @@ const (
 	PrefixScreenshot    = "screenshot"
 	PrefixRecording     = "recording"
 
-	// Camera injector (MiniSimCam) defaults.
+	// Camera injector (Iris) defaults.
 	DefaultCamWidth  = 1280
 	DefaultCamHeight = 720
 	DefaultCamFPS    = 30

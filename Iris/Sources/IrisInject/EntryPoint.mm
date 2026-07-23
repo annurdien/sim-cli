@@ -1,6 +1,6 @@
 // EntryPoint.mm
 // dylib constructor — called automatically by dyld when the library is loaded.
-// Checks the MINISIMCAM_PATH environment variable, opens shared memory,
+// Checks the IRIS_PATH environment variable, opens shared memory,
 // and installs AVFoundation hooks.
 
 #import <Foundation/Foundation.h>
@@ -21,7 +21,7 @@ static int32_t parseFPS(void) {
 }
 
 __attribute__((constructor))
-static void MiniCamInjectInit(void) {
+static void IrisInjectInit(void) {
     @autoreleasepool {
         const char* pathEnv = getenv(IRIS_ENV_PATH);
         if (!pathEnv || pathEnv[0] == '\0') {
@@ -49,7 +49,7 @@ static void MiniCamInjectInit(void) {
 }
 
 __attribute__((destructor))
-static void MiniCamInjectFini(void) {
+static void IrisInjectFini(void) {
     MSCUninstallHooks();
     if (gGlobalReader) {
         gGlobalReader->close();

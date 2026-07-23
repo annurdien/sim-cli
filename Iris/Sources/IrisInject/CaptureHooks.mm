@@ -79,7 +79,7 @@ static void swizzleClass(Class cls, SEL orig, SEL repl) {
 // AVCaptureSession category — swizzled methods
 // ---------------------------------------------------------------------------
 
-@implementation AVCaptureSession (MiniCamHook)
+@implementation AVCaptureSession (IrisHook)
 
 - (void)msc_startRunning {
     NSLog(@"[IrisInject] AVCaptureSession startRunning intercepted");
@@ -127,7 +127,7 @@ static void swizzleClass(Class cls, SEL orig, SEL repl) {
 
 static AVCaptureVideoDataOutput* gOutput;
 
-@implementation AVCaptureVideoDataOutput (MiniCamHook)
+@implementation AVCaptureVideoDataOutput (IrisHook)
 
 - (void)msc_setSampleBufferDelegate:(id<AVCaptureVideoDataOutputSampleBufferDelegate>)delegate
                               queue:(dispatch_queue_t)queue {
@@ -145,9 +145,9 @@ static AVCaptureVideoDataOutput* gOutput;
 @end
 
 // Fix for AVCapturePhotoOutput crash on iOS Simulator
-@interface AVCaptureOutput (MiniCamHookFix)
+@interface AVCaptureOutput (IrisHookFix)
 @end
-@implementation AVCaptureOutput (MiniCamHookFix)
+@implementation AVCaptureOutput (IrisHookFix)
 + (NSArray *)availableVideoCodecTypesForSourceDevice:(id)arg1 sourceFormat:(id)arg2 outputDimensions:(CMVideoDimensions)arg3 fileType:(id)arg4 videoCodecTypesAllowList:(id)arg5 {
     return @[]; // Return empty array to prevent crash
 }
@@ -185,7 +185,7 @@ static AVCaptureVideoDataOutput* gOutput;
 
 // Basic device properties
 - (NSString *)uniqueID { return @"MSCFakeCamera_001"; }
-- (NSString *)localizedName { return @"MiniSimCam Fake Device"; }
+- (NSString *)localizedName { return @"Iris Fake Device"; }
 - (AVCaptureDevicePosition)position { return AVCaptureDevicePositionBack; }
 - (BOOL)isConnected { return YES; }
 - (BOOL)isSuspended { return NO; }
@@ -259,7 +259,7 @@ static AVCaptureVideoDataOutput* gOutput;
 // AVCaptureDevice class-method swizzle
 // ---------------------------------------------------------------------------
 
-@implementation AVCaptureDevice (MiniCamHook)
+@implementation AVCaptureDevice (IrisHook)
 
 + (nullable AVCaptureDevice *)msc_defaultDeviceWithMediaType:(AVMediaType)mediaType {
     if ([mediaType isEqualToString:AVMediaTypeVideo]) {
@@ -310,7 +310,7 @@ static AVCaptureVideoDataOutput* gOutput;
 // AVCaptureDeviceDiscoverySession swizzle
 // ---------------------------------------------------------------------------
 
-@implementation AVCaptureDeviceDiscoverySession (MiniCamHook)
+@implementation AVCaptureDeviceDiscoverySession (IrisHook)
 
 - (NSArray<AVCaptureDevice *> *)msc_devices {
     static MSCFakeCaptureDevice *fakeDevice = nil;
@@ -327,7 +327,7 @@ static AVCaptureVideoDataOutput* gOutput;
 // AVCaptureDeviceInput swizzle
 // ---------------------------------------------------------------------------
 
-@implementation AVCaptureDeviceInput (MiniCamHook)
+@implementation AVCaptureDeviceInput (IrisHook)
 
 + (instancetype)msc_deviceInputWithDevice:(AVCaptureDevice *)device error:(NSError **)outError {
     if ([device isKindOfClass:NSClassFromString(@"MSCFakeCaptureDevice")]) {
@@ -362,7 +362,7 @@ static void startDelivery(void);
 // AVCaptureVideoPreviewLayer category — swizzled methods
 // ---------------------------------------------------------------------------
 
-@implementation AVCaptureVideoPreviewLayer (MiniCamHook)
+@implementation AVCaptureVideoPreviewLayer (IrisHook)
 
 - (instancetype)init_mscWithSession:(AVCaptureSession *)session {
     id instance = [self init_mscWithSession:session];
@@ -579,7 +579,7 @@ static void deliverFrame(void) {
 
 void MSCInstallHooks(SharedFrameReader* reader, int32_t fps) {
     gLock          = [NSLock new];
-    gDeliveryQueue = dispatch_queue_create("com.minisimcam.delivery", DISPATCH_QUEUE_SERIAL);
+    gDeliveryQueue = dispatch_queue_create("com.iris.delivery", DISPATCH_QUEUE_SERIAL);
     gReader        = reader;
     gFPS           = fps;
     gFactory       = [[MSCSampleBufferFactory alloc] initWithFPS:fps];
