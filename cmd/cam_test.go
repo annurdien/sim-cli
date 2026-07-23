@@ -20,9 +20,9 @@ func TestCamShmPaths(t *testing.T) {
 		fn   func(string) string
 		want string
 	}{
-		{shmPath, "/tmp/minisimcam.ABC-123.frames"},
-		{statusFilePath, "/tmp/minisimcam.ABC-123.status"},
-		{pidFilePath, "/tmp/minisimcam.ABC-123.pid"},
+		{shmPath, "/tmp/iris.ABC-123.frames"},
+		{statusFilePath, "/tmp/iris.ABC-123.status"},
+		{pidFilePath, "/tmp/iris.ABC-123.pid"},
 	}
 
 	for _, tt := range tests {
@@ -71,7 +71,7 @@ func TestCamStatusParsing(t *testing.T) {
 
 func TestFrameHostFPS(t *testing.T) {
 	udid := fmt.Sprintf("frame-host-fps-test-%d", time.Now().UnixNano())
-	path := filepath.Join(os.TempDir(), fmt.Sprintf("minisimcam.%s.status", udid))
+	path := filepath.Join(os.TempDir(), fmt.Sprintf("iris.%s.status", udid))
 	t.Cleanup(func() { _ = os.Remove(path) })
 
 	status := camFrameLoopStatus{FPS: 60}
@@ -96,10 +96,10 @@ func TestStopFrameHostNoFile(t *testing.T) {
 	}
 }
 
-// TestMiniSimCamDirFallback verifies that miniSimCamDir() returns a path ending in "MiniSimCam".
-func TestMiniSimCamDirFallback(t *testing.T) {
+// TestIrisDirFallback verifies that miniSimCamDir() returns a path ending in "Iris".
+func TestIrisDirFallback(t *testing.T) {
 	dir := miniSimCamDir()
-	if filepath.Base(dir) != "MiniSimCam" {
-		t.Errorf("expected base to be MiniSimCam, got %q", filepath.Base(dir))
+	if filepath.Base(dir) != "Iris" {
+		t.Errorf("expected base to be Iris, got %q", filepath.Base(dir))
 	}
 }

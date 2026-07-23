@@ -1,0 +1,6 @@
+module IrisShared {
+    header "IrisProtocol.h"
+    header "IrisConstants.h"
+    header "AtomicHelpers.h"
+    export *
+}

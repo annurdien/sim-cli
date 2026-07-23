@@ -12,25 +12,31 @@ UNAME_S := $(shell uname -s)
 # Build the application (with embedded cam binaries on macOS)
 build:
 ifeq ($(UNAME_S),Darwin)
-	cd MiniSimCam && ./Scripts/build.sh
-	go build -tags cam_embed $(LDFLAGS) -o sim
+	@cd Iris && ./Scripts/build.sh
+	@printf "  \033[2m›\033[0m Compiling sim..."
+	@go build -tags cam_embed $(LDFLAGS) -o sim
+	@printf "\r  \033[32m✓\033[0m Compiling sim   \n"
+	@printf "\n  \033[1m\033[32msim\033[0m built successfully.\n\n"
 else
-	go build $(LDFLAGS) -o sim
+	@printf "  \033[2m›\033[0m Compiling sim..."
+	@go build $(LDFLAGS) -o sim
+	@printf "\r  \033[32m✓\033[0m Compiling sim   \n"
+	@printf "\n  \033[1m\033[32msim\033[0m built successfully.\n\n"
 endif
 
 # Build for multiple platforms
 build-all:
-	mkdir -p dist
+	@mkdir -p dist
 ifeq ($(UNAME_S),Darwin)
-	cd MiniSimCam && ./Scripts/build.sh
-	GOOS=darwin GOARCH=amd64 go build -tags cam_embed $(LDFLAGS) -o dist/sim-darwin-amd64
-	GOOS=darwin GOARCH=arm64 go build -tags cam_embed $(LDFLAGS) -o dist/sim-darwin-arm64
+	@cd Iris && ./Scripts/build.sh
+	@GOOS=darwin GOARCH=amd64 go build -tags cam_embed $(LDFLAGS) -o dist/sim-darwin-amd64
+	@GOOS=darwin GOARCH=arm64 go build -tags cam_embed $(LDFLAGS) -o dist/sim-darwin-arm64
 else
-	GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o dist/sim-darwin-amd64
-	GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) -o dist/sim-darwin-arm64
+	@GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o dist/sim-darwin-amd64
+	@GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) -o dist/sim-darwin-arm64
 endif
-	GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o dist/sim-linux-amd64
-	GOOS=windows GOARCH=amd64 go build $(LDFLAGS) -o dist/sim-windows-amd64.exe
+	@GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o dist/sim-linux-amd64
+	@GOOS=windows GOARCH=amd64 go build $(LDFLAGS) -o dist/sim-windows-amd64.exe
 
 # Clean build artifacts
 clean:
@@ -39,14 +45,14 @@ clean:
 	rm -rf cmd/assets/
 	rm -f coverage.out coverage.html
 
-# Build MiniSimCam (FrameHost + MiniCamInject dylib)
+# Build Iris (FrameHost + IrisInject dylib)
 cam-build:
-	cd MiniSimCam && ./Scripts/build.sh
+	@cd Iris && ./Scripts/build.sh
 
-# Clean MiniSimCam build artifacts
+# Clean Iris build artifacts
 cam-clean:
-	cd MiniSimCam && swift package clean
-	rm -rf MiniSimCam/.build/injector
+	cd Iris && swift package clean
+	rm -rf Iris/.build/injector
 	rm -rf cmd/assets/
 
 # Install dependencies
@@ -103,6 +109,6 @@ help:
 	@echo "  vet           - Run go vet"
 	@echo "  check         - Run all checks (fmt, vet, lint, test-race)"
 	@echo "  install       - Install to /usr/local/bin"
-	@echo "  cam-build     - Build MiniSimCam (FrameHost + injector dylib)"
-	@echo "  cam-clean     - Clean MiniSimCam build artifacts"
+	@echo "  cam-build     - Build Iris (FrameHost + IrisInject dylib)"
+	@echo "  cam-clean     - Clean Iris build artifacts"
 	@echo "  help          - Show this help"
