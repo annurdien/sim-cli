@@ -156,11 +156,11 @@ sequenceDiagram
     App->>Inject: dyld loads injected library
     activate Inject
     Inject->>Inject: __attribute__((constructor)) init()
-    Inject->>AV: method_exchangeImplementations(startRunning, msc_startRunning)
+    Inject->>AV: method_exchangeImplementations(startRunning, iris_startRunning)
     deactivate Inject
 
     App->>AV: [session startRunning]
-    AV->>Inject: msc_startRunning() (intercepted)
+    AV->>Inject: iris_startRunning() (intercepted)
     activate Inject
     Inject->>Inject: setup GCD background queue
     Inject->>Inject: mmap(/tmp/iris.<udid>.frames)
