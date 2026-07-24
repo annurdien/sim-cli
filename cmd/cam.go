@@ -182,8 +182,6 @@ var (
 	camStartBars      bool
 	camStartCamera    bool
 	camStartCameraID  string
-	camStartWidth     int
-	camStartHeight    int
 	camStartFPS       int
 	camStartDevice    string
 )
@@ -217,14 +215,8 @@ Examples:
 		if sourceCount != 1 {
 			return fmt.Errorf("provide exactly one of --image <path>, --bars, or --camera")
 		}
-		if camStartWidth <= 0 || camStartHeight <= 0 || camStartWidth > 3840 || camStartHeight > 3840 {
-			return fmt.Errorf("--width and --height must be between 1 and 3840")
-		}
 		if camStartFPS < 1 || camStartFPS > 120 {
 			return fmt.Errorf("--fps must be between 1 and 120")
-		}
-		if camStartCamera && (cmd.Flags().Changed("width") || cmd.Flags().Changed("height")) {
-			return fmt.Errorf("--width and --height are not supported with --camera (hardware resolution is used automatically)")
 		}
 		if camStartCameraID != "" && !camStartCamera {
 			return fmt.Errorf("--camera-id requires --camera")
@@ -250,8 +242,6 @@ Examples:
 
 		hostArgs := []string{
 			"--udid", udid,
-			"--width", strconv.Itoa(camStartWidth),
-			"--height", strconv.Itoa(camStartHeight),
 			"--fps", strconv.Itoa(camStartFPS),
 		}
 		if camStartBars {
@@ -296,8 +286,8 @@ Examples:
 			}
 		}
 		PrintSuccess(fmt.Sprintf(
-			"FrameHost started — source=%s %dx%d @ %d fps (simulator %s)",
-			source, camStartWidth, camStartHeight, camStartFPS, udid,
+			"FrameHost started — source=%s @ %d fps (simulator %s)",
+			source, camStartFPS, udid,
 		))
 		return nil
 	},
@@ -631,8 +621,6 @@ func init() {
 	camStartCmd.Flags().BoolVar(&camStartBars, "bars", false, "Use synthetic SMPTE color-bar image")
 	camStartCmd.Flags().BoolVar(&camStartCamera, "camera", false, "Use the Mac's physical camera as a live source")
 	camStartCmd.Flags().StringVar(&camStartCameraID, "camera-id", "", "Camera name (substring) or uniqueID to select (requires --camera)")
-	camStartCmd.Flags().IntVar(&camStartWidth, "width", DefaultCamWidth, "Frame width in pixels")
-	camStartCmd.Flags().IntVar(&camStartHeight, "height", DefaultCamHeight, "Frame height in pixels")
 	camStartCmd.Flags().IntVar(&camStartFPS, "fps", DefaultCamFPS, "Frames per second (1-120)")
 	camStartCmd.Flags().StringVar(&camStartDevice, "device", "", "Simulator name or UDID (default: booted)")
 	camCmd.AddCommand(camStartCmd)

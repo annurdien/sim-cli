@@ -36,11 +36,6 @@ struct FrameHostCommand: ParsableCommand {
     @Flag(name: .long, help: "Output camera list as JSON (use with --list-cameras).")
     var json: Bool = false
 
-    @Option(name: .long, help: "Output frame width in pixels.")
-    var width: Int = 1280
-
-    @Option(name: .long, help: "Output frame height in pixels.")
-    var height: Int = 720
 
     @Option(name: .long, help: "Frames per second.")
     var fps: Int = 30
@@ -59,11 +54,6 @@ struct FrameHostCommand: ParsableCommand {
         // --camera-id only makes sense with --camera.
         if cameraID != nil && !camera {
             throw ValidationError("--camera-id requires --camera.")
-        }
-        guard width > 0, height > 0 else { throw ValidationError("Width and height must be > 0.") }
-        let maxDimension = Int(IRIS_MAX_DIMENSION)
-        guard width <= maxDimension, height <= maxDimension else {
-            throw ValidationError("Width and height must not exceed \(maxDimension).")
         }
         guard fps > 0, fps <= 120 else { throw ValidationError("FPS must be between 1 and 120.") }
         guard !listCameras else { return }
@@ -97,7 +87,7 @@ struct FrameHostCommand: ParsableCommand {
 
         // Open shared memory.
         let writer = SharedFrameWriter(path: shmPath)
-        try writer.open(width: width, height: height)
+        try writer.open(width: 1280, height: 720)
         defer { writer.close() }
 
         // Start the appropriate source.
@@ -119,11 +109,11 @@ struct FrameHostCommand: ParsableCommand {
             let frame: BGRAFrame
             if bars {
                 sourceName = "color-bars"
-                frame = try ImageSource.colorBars(width: width, height: height)
+                frame = try ImageSource.colorBars(width: 1280, height: 720)
             } else {
                 let url = URL(fileURLWithPath: image!)
                 sourceName = url.lastPathComponent
-                frame = try ImageSource.load(url: url, targetWidth: width, targetHeight: height)
+                frame = try ImageSource.load(url: url, targetWidth: 1280, targetHeight: 720)
             }
             camSource = nil
             loop = FrameLoop(
@@ -137,7 +127,7 @@ struct FrameHostCommand: ParsableCommand {
             loop?.start()
         }
 
-        print("[FrameHost] started — source=\(sourceName) \(width)×\(height) @ \(fps) fps")
+        print("[FrameHost] started — source=\(sourceName) @ \(fps) fps")
         print("[FrameHost] shared memory: \(shmPath)")
         print("[FrameHost] status file:   \(statusPath)")
         print("[FrameHost] PID: \(pid)")
