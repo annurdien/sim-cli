@@ -15,7 +15,6 @@ fi
 
 cd "$PROJECT_DIR"
 
-# ── Colors & symbols ─────────────────────────────────────────────────────────
 if [[ -t 1 ]]; then
   BOLD='\033[1m'
   DIM='\033[2m'
@@ -30,7 +29,6 @@ else
   CHECK='OK' ARROW='>'
 fi
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
 step() {
   printf "  ${DIM}${ARROW}${RESET} %s" "$1"
 }
@@ -60,7 +58,6 @@ printf "\n"
 printf "  ${BOLD}Iris${RESET} ${DIM}build${RESET}\n"
 printf "  ${DIM}──────────────────────────────────${RESET}\n"
 
-# -- 1. Build FrameHost (macOS release) ----------------------------------------
 step "FrameHost (macOS)..."
 STEP_START=$(date +%s)
 
@@ -69,7 +66,6 @@ swift build --disable-sandbox -c release --product FrameHost > /dev/null 2>&1
 FRAME_HOST_BIN="$(swift build --disable-sandbox -c release --product FrameHost --show-bin-path 2>/dev/null)/FrameHost"
 done_step "$(elapsed_since $STEP_START)" "FrameHost (macOS)"
 
-# -- 2. Build IrisInject.dylib (iOS Simulator) --------------------------------
 BUILD_DIR="${PROJECT_DIR}/.build/injector"
 mkdir -p "${BUILD_DIR}"
 
@@ -80,7 +76,6 @@ compile_arch() {
     local ARCH="$1"
     local TARGET="${ARCH}-apple-ios16.0-simulator"
 
-    # SharedFrameReader.cpp -- pure C++17 (no ObjC)
     clang++ \
         -target "${TARGET}" \
         -isysroot "${SIM_SDK}" \
@@ -90,7 +85,6 @@ compile_arch() {
         -c "${PROJECT_DIR}/Sources/IrisInject/SharedFrameReader.cpp" \
         -o "${BUILD_DIR}/SharedFrameReader_${ARCH}.o"
 
-    # SampleBufferFactory.mm -- ObjC++ with ARC
     clang++ \
         -target "${TARGET}" \
         -isysroot "${SIM_SDK}" \
@@ -101,7 +95,6 @@ compile_arch() {
         -c "${PROJECT_DIR}/Sources/IrisInject/SampleBufferFactory.mm" \
         -o "${BUILD_DIR}/SampleBufferFactory_${ARCH}.o"
 
-    # CaptureHooks.mm -- ObjC++ with ARC
     clang++ \
         -target "${TARGET}" \
         -isysroot "${SIM_SDK}" \
@@ -112,7 +105,16 @@ compile_arch() {
         -c "${PROJECT_DIR}/Sources/IrisInject/CaptureHooks.mm" \
         -o "${BUILD_DIR}/CaptureHooks_${ARCH}.o"
 
-    # EntryPoint.mm -- ObjC++ with ARC
+    clang++ \
+        -target "${TARGET}" \
+        -isysroot "${SIM_SDK}" \
+        ${INCLUDE_FLAGS} \
+        -std=c++17 \
+        -fPIC -g \
+        -fobjc-arc \
+        -c "${PROJECT_DIR}/Sources/IrisInject/FakeCaptureObjects.mm" \
+        -o "${BUILD_DIR}/FakeCaptureObjects_${ARCH}.o"
+
     clang++ \
         -target "${TARGET}" \
         -isysroot "${SIM_SDK}" \
@@ -123,7 +125,6 @@ compile_arch() {
         -c "${PROJECT_DIR}/Sources/IrisInject/EntryPoint.mm" \
         -o "${BUILD_DIR}/EntryPoint_${ARCH}.o"
 
-    # Link dylib
     clang++ \
         -target "${TARGET}" \
         -dynamiclib \
@@ -139,6 +140,7 @@ compile_arch() {
         "${BUILD_DIR}/SharedFrameReader_${ARCH}.o" \
         "${BUILD_DIR}/SampleBufferFactory_${ARCH}.o" \
         "${BUILD_DIR}/CaptureHooks_${ARCH}.o" \
+        "${BUILD_DIR}/FakeCaptureObjects_${ARCH}.o" \
         "${BUILD_DIR}/EntryPoint_${ARCH}.o" \
         -o "${BUILD_DIR}/IrisInject_${ARCH}.dylib"
 }
@@ -153,7 +155,6 @@ STEP_START=$(date +%s)
 compile_arch x86_64
 done_step "$(elapsed_since $STEP_START)" "IrisInject (x86_64)"
 
-# Create universal binary.
 step "Universal binary (lipo)..."
 STEP_START=$(date +%s)
 lipo -create \
@@ -162,7 +163,6 @@ lipo -create \
     -output "${BUILD_DIR}/IrisInject.dylib"
 done_step "$(elapsed_since $STEP_START)" "Universal binary (lipo)"
 
-# Copy binaries to cmd/assets for go:embed
 ASSETS_DIR="${REPO_ROOT}/cmd/assets"
 mkdir -p "${ASSETS_DIR}"
 cp "${FRAME_HOST_BIN}" "${ASSETS_DIR}/FrameHost"

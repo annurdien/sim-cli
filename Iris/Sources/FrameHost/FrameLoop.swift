@@ -4,34 +4,6 @@
 
 import Foundation
 
-struct FrameLoopStatus: Codable {
-    var udid: String
-    var source: String
-    var width: Int
-    var height: Int
-    var fps: Int
-    var framesProduced: UInt64
-    var hostPID: Int32
-    var startedAt: String         // ISO-8601
-    var lastFrameAgeMs: Double    // milliseconds since last publish
-    var running: Bool
-}
-
-// MARK: - Monotonic clock
-
-/// Cached mach timebase info — initialised once, not on every call.
-private let _timebaseInfo: mach_timebase_info_data_t = {
-    var info = mach_timebase_info_data_t()
-    mach_timebase_info(&info)
-    return info
-}()
-
-/// Returns a monotonic nanosecond timestamp anchored to mach_absolute_time.
-func currentMonotonicNs() -> UInt64 {
-    let ticks = mach_absolute_time()
-    return ticks * UInt64(_timebaseInfo.numer) / UInt64(_timebaseInfo.denom)
-}
-
 final class FrameLoop {
 
     // MARK: - State
@@ -113,10 +85,9 @@ final class FrameLoop {
         guard force || (now &- lastStatusWriteNs) >= statusWriteIntervalNs else { return }
         lastStatusWriteNs = now
 
-        let ageMs: Double = lastPublishNs == 0 ? 0
-                          : Double(now &- lastPublishNs) / 1_000_000.0
+        let ageMs: Double = lastPublishNs == 0 ? 0 : ageInMs(fromMonotonicNs: lastPublishNs)
 
-        let status = FrameLoopStatus(
+        let status = HostStatus(
             udid:           udid,
             source:         sourceName,
             width:          frame.width,
@@ -134,5 +105,3 @@ final class FrameLoop {
         try? data.write(to: URL(fileURLWithPath: statusPath), options: .atomic)
     }
 }
-
-// currentMonotonicNs() is defined above, before FrameLoop, using a cached timebase.
