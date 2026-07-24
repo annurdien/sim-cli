@@ -110,8 +110,6 @@ struct FrameHostCommand: ParsableCommand {
             loop = nil
             camSource = CameraSource(
                 writer:     writer,
-                width:      width,
-                height:     height,
                 fps:        fps,
                 udid:       udid,
                 statusPath: statusPath,

@@ -223,6 +223,9 @@ Examples:
 		if camStartFPS < 1 || camStartFPS > 120 {
 			return fmt.Errorf("--fps must be between 1 and 120")
 		}
+		if camStartCamera && (cmd.Flags().Changed("width") || cmd.Flags().Changed("height")) {
+			return fmt.Errorf("--width and --height are not supported with --camera (hardware resolution is used automatically)")
+		}
 		if camStartCameraID != "" && !camStartCamera {
 			return fmt.Errorf("--camera-id requires --camera")
 		}
