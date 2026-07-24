@@ -6,7 +6,7 @@ This document explains the technical architecture of the `sim cam` feature. It d
 The iOS Simulator lacks hardware passthrough for the host Mac's physical cameras. When an app running in the simulator uses `AVFoundation` to request camera access, the simulator returns a mock black screen, provides a static placeholder, or crashes the app.
 
 ## The Solution
-`sim-cli` solves this using a distributed, two-process architecture communicating over lock-free shared memory. 
+`sim-cli` solves this using a distributed, two-process architecture communicating over a lock-free shared memory header and hardware-accelerated `IOSurface` graphics memory.
 
 ```mermaid
 flowchart TD
@@ -19,7 +19,8 @@ flowchart TD
             SharedFrameWriter["SharedFrameWriter"]
         end
         
-        SHM[/"/tmp/iris.<udid>.frames (Shared Memory)"/]
+        SHM[/"/tmp/iris.<udid>.frames (Shared Memory Header)"/]
+        GPU[/"GPU Memory (IOSurface)"/]
     end
 
     subgraph Sim["iOS Simulator"]
@@ -38,9 +39,11 @@ flowchart TD
     CLI -. "Injects via launchctl" .-> App
     WebCam -- "Frames" --> CameraSource
     CameraSource -- "BGRA" --> SharedFrameWriter
-    SharedFrameWriter -- "Seq-locked write" --> SHM
-    SHM -- "Polling read" --> SharedFrameReader
-    SharedFrameReader -- "BGRA" --> SampleBufferFactory
+    SharedFrameWriter -- "Writes Frame" --> GPU
+    SharedFrameWriter -- "Seq-locked write ID" --> SHM
+    SHM -- "Polling read ID" --> SharedFrameReader
+    GPU -- "Zero-Copy Bind" --> SharedFrameReader
+    SharedFrameReader -- "IOSurface" --> SampleBufferFactory
     SampleBufferFactory -- "CMSampleBuffer" --> Swizzler
     Swizzler -- "Spoofs feed" --> AVFoundation
 ```
@@ -52,12 +55,12 @@ flowchart TD
 Passing uncompressed 1080p or 4K video at 60 frames per second between two separate processes requires moving up to 500 MB/s of data.
 
 **The Design Decision:**
-Standard IPC mechanisms like XPC, Mach ports, or local UNIX sockets require serializing the data, copying it into the operating system kernel space, and then copying it back out to the receiving process. This double-copy creates CPU bottlenecks and latency. To fix this, `sim-cli` uses **Memory-Mapped Files (`mmap`)**.
+Standard IPC mechanisms like XPC, Mach ports, or local UNIX sockets require serializing the data, copying it into the operating system kernel space, and then copying it back out to the receiving process. This double-copy creates CPU bottlenecks and latency. To fix this, `sim-cli` uses **Memory-Mapped Files (`mmap`)** combined with **IOSurface**.
 
-Memory mapping maps a file directly into the virtual memory space of both the macOS `FrameHost` process and the iOS Simulator app process. When `FrameHost` writes a pixel to this memory region, the iOS app can read that exact byte instantly. This enables zero-copy data transfer.
+`IOSurface` is Apple’s native framework for sharing hardware-accelerated graphics memory across process boundaries. `FrameHost` writes frames to a global `IOSurface` pool, and only shares a 32-bit `ioSurfaceID` via a memory-mapped file. This enables **true zero-copy delivery** with virtually 0% CPU overhead for data transfer.
 
 ### Memory Layout
-The shared memory file consists of a 128-byte header (`IRISStreamHeader`), immediately followed by a triple-buffer of raw BGRA pixel data.
+The shared memory file consists *only* of a 128-byte header (`IRISStreamHeader`). It does not contain the actual pixel data.
 
 ```c
 typedef struct {
@@ -67,11 +70,11 @@ typedef struct {
     uint32_t height;               // Frame height
     uint32_t bytesPerRow;          // Memory stride (aligned to 64 bytes)
     uint32_t pixelFormat;          // 'BGRA'
-    uint32_t bufferCount;          // 3 (Triple buffered)
-    uint32_t bufferSize;           // bytesPerRow * height
+    uint32_t _pad1;                // Explicit padding
+    uint32_t _pad2;                // Explicit padding
     uint64_t sequence;             // ATOMIC: Sequence lock for writers
-    uint32_t publishedIndex;       // ATOMIC: Current readable buffer index
-    uint32_t _pad0;                // Alignment padding
+    uint32_t ioSurfaceID;          // ATOMIC: ID of the active IOSurface
+    uint32_t _pad0;                // Explicit padding
     uint64_t presentationTimeNs;   // Frame PTS (Nanoseconds)
     uint64_t framesProduced;       // ATOMIC: Total frames produced
     uint8_t  reserved[64];         // Future expansion padding
@@ -79,7 +82,7 @@ typedef struct {
 ```
 
 ### The Lock-Free Algorithm
-Because the producer (`FrameHost`) and consumer (`IrisInject`) run in separate processes, they need a way to coordinate. If `FrameHost` writes data while the app is reading it, the video frame tears (the top half of the old frame mixed with the bottom half of the new frame).
+Because the producer (`FrameHost`) and consumer (`IrisInject`) run in separate processes, they need a way to coordinate. If `FrameHost` updates the `ioSurfaceID` and timing metadata while the app is reading it, the video frame tears or presents with the wrong timestamp.
 
 **The Design Decision:**
 We cannot use standard POSIX mutexes (`pthread_mutex_t`). If the user stops the camera and `sim-cli` kills `FrameHost` via `SIGKILL` while it holds a shared mutex, the mutex is permanently locked. The iOS app would wait on that lock forever and freeze. 
@@ -96,8 +99,8 @@ sequenceDiagram
     Note over P, C: Producer Write
     P->>SHM: load sequence
     P->>SHM: sequence = sequence + 1 (Odd: Locked)
-    P->>SHM: write pixel data to buffer[writeIndex]
-    P->>SHM: update publishedIndex = writeIndex
+    P->>SHM: write new ioSurfaceID
+    P->>SHM: write presentationTimeNs
     P->>SHM: sequence = sequence + 1 (Even: Unlocked)
 
     %% Consumer Read
@@ -105,10 +108,9 @@ sequenceDiagram
     loop until valid frame
         C->>SHM: seqA = load sequence
         alt seqA is Odd
-            C->>C: sched_yield() (retry)
+            C->>C: __builtin_arm_yield() (retry)
         else seqA is Even
-            C->>SHM: idx = load publishedIndex
-            C->>SHM: copy pixels from buffer[idx]
+            C->>SHM: read ioSurfaceID and PTS
             C->>SHM: seqB = load sequence
             alt seqA == seqB
                 C->>C: Valid frame! Break loop.
@@ -119,8 +121,8 @@ sequenceDiagram
     end
 ```
 
-1. **Producer writes:** `FrameHost` extracts raw BGRA pointers from the Mac's hardware camera. It atomically increments the `sequence` integer to an **odd** number, signaling a write is in progress. It copies the frame into an inactive buffer slot, updates `publishedIndex`, and increments `sequence` to an **even** number.
-2. **Consumer reads:** `IrisInject` polls the `sequence` integer. If it is even, it begins reading the frame from `publishedIndex`. After the memory copy finishes, it checks `sequence` again. If `sequence` changed during the read, a torn read occurred. The consumer discards the bad frame and retries instantly.
+1. **Producer writes:** `FrameHost` writes a frame to a new `IOSurface` in its pool. It atomically increments the `sequence` integer to an **odd** number, signaling a write is in progress. It updates `ioSurfaceID` and timestamp metadata, and increments `sequence` to an **even** number.
+2. **Consumer reads:** `IrisInject` polls the `sequence` integer. If it is even, it begins reading the IDs and metadata. After copying the 128-byte header, it checks `sequence` again. If `sequence` changed during the read, a torn read occurred. The consumer discards the read and retries instantly. It then invokes `IOSurfaceLookup` using the valid ID.
 
 ---
 
@@ -183,27 +185,27 @@ When the iOS app calls `[session startRunning]`, execution jumps to our code. Th
 
 ## 3. Frame Delivery
 
-When the iOS app's GCD queue successfully copies an un-torn frame from shared memory, it must convert the raw data into a format `AVFoundation` understands.
+When the iOS app's GCD queue successfully reads a valid `ioSurfaceID` from shared memory, it looks up the surface and packages it for `AVFoundation`.
 
 ```mermaid
 flowchart LR
-    SHM[("Shared Memory<br>(Raw BGRA Bytes)")]
+    SHM[("Shared Memory<br>(128B Header)")]
     Factory["SampleBufferFactory<br>(Obj-C++)"]
     CVPixelBuffer["CoreVideo<br>CVPixelBuffer"]
     CMTime["CMTime<br>(Hardware Clock)"]
     CMSampleBuffer["CMSampleBuffer"]
     Delegate["AVCaptureVideoDataOutput<br>SampleBufferDelegate"]
 
-    SHM -- "Lock-Free Copy" --> Factory
-    Factory -- "Wraps Memory" --> CVPixelBuffer
+    SHM -- "Reads IOSurfaceID" --> Factory
+    Factory -- "IOSurfaceLookup" --> CVPixelBuffer
     Factory -- "Attaches" --> CMTime
     CVPixelBuffer --> CMSampleBuffer
     CMTime --> CMSampleBuffer
     CMSampleBuffer -- "Pushes to App" --> Delegate
 ```
 
-1. `SampleBufferFactory` (written in Objective-C++) takes the raw BGRA memory array.
-2. It wraps the memory into a CoreVideo `CVPixelBuffer`.
+1. `SampleBufferFactory` reads the `ioSurfaceID` and looks up the `IOSurfaceRef` via the kernel.
+2. It wraps the `IOSurface` into a CoreVideo `CVPixelBuffer`.
 3. It attaches hardware timing data (`CMTime`) to match the simulator's internal clock.
 4. It packages the `CVPixelBuffer` into a `CMSampleBuffer`.
 5. It pushes the `CMSampleBuffer` to the `AVCaptureVideoDataOutputSampleBufferDelegate` of the app.
@@ -260,40 +262,29 @@ When the active camera is changed:
 
 ## 5. Future Architectural Improvements
 
-The current architecture is highly functional, but several advanced improvements could be implemented to elevate performance and provide a completely seamless "magic" experience.
+The current architecture is highly functional, but advanced improvements could elevate performance and provide a completely seamless "magic" experience.
 
 ```mermaid
 flowchart TD
     subgraph Host["macOS Host"]
         subgraph FrameHost["FrameHost (Next-Gen)"]
             CameraSource["CameraSource"]
-            IOSurfaceWriter["IOSurface Writer"]
             ControlReader["Control Message Reader"]
         end
         
         SHM[/"Shared Memory (Header & Control)"/]
-        GPU[/"GPU Memory (IOSurface)"/]
     end
 
     subgraph Sim["iOS Simulator"]
         subgraph App["Target iOS App"]
             subgraph Injector["IrisInject.dylib"]
                 VNODE["VNODE File Monitor"]
-                IOSurfaceReader["IOSurface Lookup"]
                 ControlWriter["Control Message Writer"]
             end
             AVF["AVFoundation"]
         end
     end
 
-    CameraSource -- "Frames" --> IOSurfaceWriter
-    IOSurfaceWriter -- "Hardware Write" --> GPU
-    IOSurfaceWriter -- "Passes IOSurfaceID" --> SHM
-    
-    SHM -- "Reads ID" --> IOSurfaceReader
-    GPU -- "Zero-Copy Read" --> IOSurfaceReader
-    IOSurfaceReader -- "CMSampleBuffer" --> AVF
-    
     AVF -- "UI Events (Focus, Flip)" --> ControlWriter
     ControlWriter -- "Control Messages" --> SHM
     SHM -- "Reads Messages" --> ControlReader
@@ -302,11 +293,8 @@ flowchart TD
     VNODE -. "Listens for deletion" .-> SHM
 ```
 
-### 1. Zero-Copy `IOSurface` Delivery (Hardware Acceleration)
-Instead of using a POSIX shared memory file for raw BGRA bytes (which requires `memcpy` operations on the CPU), the architecture could transition to `IOSurface`. `IOSurface` is Apple’s native framework for sharing hardware-accelerated graphics memory across process boundaries. `FrameHost` would write frames directly to the GPU, place the integer `IOSurfaceID` in the shared memory header, and the iOS app would use `IOSurfaceLookup()` to grab it. This provides **true zero-copy delivery** with virtually 0% CPU overhead.
-
-### 2. Seamless Hot-Swapping (The VNODE File Monitor)
+### 1. Seamless Hot-Swapping (The VNODE File Monitor)
 To fix the limitation where resolution changes freeze the camera feed, the iOS app's `SharedFrameReader` could implement a Grand Central Dispatch (GCD) `DISPATCH_SOURCE_TYPE_VNODE` monitor. This allows the iOS app to listen for `NOTE_DELETE` or `NOTE_RENAME` events on the shared memory file. If `sim-cli` deletes the file to change resolutions, the app detects it instantly, closes the old memory map, and `mmap`s the new file on the fly—making camera swapping perfectly seamless.
 
-### 3. Bidirectional Control Channel
+### 2. Bidirectional Control Channel
 Currently, data flows one way (macOS → iOS). By adding a lock-free **Control Ring-Buffer** in the shared memory header, the iOS app could send camera control events *back* to macOS. If the user taps the "Flip Camera" button or taps to focus inside the iOS Simulator, `IrisInject` could write those events to the control buffer. `FrameHost` would read them and automatically switch from the Mac's FaceTime camera to a plugged-in DSLR or adjust the hardware focus, making the injection truly interactive.
