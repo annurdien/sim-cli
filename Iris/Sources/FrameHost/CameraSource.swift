@@ -11,8 +11,8 @@ final class CameraSource: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
     // MARK: - Configuration
 
     private let writer: SharedFrameWriter
-    private let targetWidth: Int
-    private let targetHeight: Int
+    private var actualWidth: Int = 0
+    private var actualHeight: Int = 0
     private let fps: Int
     private let udid: String
     private let statusPath: String
@@ -49,15 +49,11 @@ final class CameraSource: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
     // MARK: - Init
 
     init(writer: SharedFrameWriter,
-         width: Int,
-         height: Int,
          fps: Int,
          udid: String,
          statusPath: String,
          cameraID: String? = nil) {
         self.writer = writer
-        self.targetWidth = width
-        self.targetHeight = height
         self.fps = fps
         self.udid = udid
         self.statusPath = statusPath
@@ -107,6 +103,11 @@ final class CameraSource: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
                        didOutput sampleBuffer: CMSampleBuffer,
                        from connection: AVCaptureConnection) {
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+
+        stateLock.lock()
+        actualWidth = CVPixelBufferGetWidth(pixelBuffer)
+        actualHeight = CVPixelBufferGetHeight(pixelBuffer)
+        stateLock.unlock()
 
         let nowNs = currentMonotonicNs()
 
@@ -214,13 +215,18 @@ final class CameraSource: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
         let disconnectedAt = lastDisconnectedAt.map { isoFormatter.string(from: $0) }
         let ageMs = (lastPublishNs == 0 || !running) ? 0 : ageInMs(fromMonotonicNs: lastPublishNs)
         
+        stateLock.lock()
+        let currentWidth = actualWidth
+        let currentHeight = actualHeight
+        stateLock.unlock()
+        
         let status = HostStatus(
             udid: udid,
             source: running ? metadata.name : "disconnected",
             cameraName: metadata.name,
             cameraType: metadata.type,
-            width: targetWidth,
-            height: targetHeight,
+            width: currentWidth,
+            height: currentHeight,
             fps: fps,
             framesProduced: writer.framesProduced,
             hostPID: ProcessInfo.processInfo.processIdentifier,
