@@ -182,7 +182,6 @@ var (
 	camStartBars      bool
 	camStartCamera    bool
 	camStartCameraID  string
-	camStartScaleMode string
 	camStartWidth     int
 	camStartHeight    int
 	camStartFPS       int
@@ -227,9 +226,6 @@ Examples:
 		if camStartCameraID != "" && !camStartCamera {
 			return fmt.Errorf("--camera-id requires --camera")
 		}
-		if cmd.Flags().Changed("scale-mode") && !camStartCamera {
-			return fmt.Errorf("--scale-mode requires --camera")
-		}
 
 		// Resolve UDID.
 		udid, _, err := findRunningIOSSimulator(camStartDevice)
@@ -261,9 +257,6 @@ Examples:
 			hostArgs = append(hostArgs, "--camera")
 			if camStartCameraID != "" {
 				hostArgs = append(hostArgs, "--camera-id", camStartCameraID)
-			}
-			if camStartScaleMode != "" {
-				hostArgs = append(hostArgs, "--scale-mode", camStartScaleMode)
 			}
 		} else {
 			absImage, err := filepath.Abs(camStartImage)
@@ -635,7 +628,6 @@ func init() {
 	camStartCmd.Flags().BoolVar(&camStartBars, "bars", false, "Use synthetic SMPTE color-bar image")
 	camStartCmd.Flags().BoolVar(&camStartCamera, "camera", false, "Use the Mac's physical camera as a live source")
 	camStartCmd.Flags().StringVar(&camStartCameraID, "camera-id", "", "Camera name (substring) or uniqueID to select (requires --camera)")
-	camStartCmd.Flags().StringVar(&camStartScaleMode, "scale-mode", "", "How to scale: 'fill' (crop, fast) or 'fit' (letterbox, no crop). Requires --camera. (default: fill)")
 	camStartCmd.Flags().IntVar(&camStartWidth, "width", DefaultCamWidth, "Frame width in pixels")
 	camStartCmd.Flags().IntVar(&camStartHeight, "height", DefaultCamHeight, "Frame height in pixels")
 	camStartCmd.Flags().IntVar(&camStartFPS, "fps", DefaultCamFPS, "Frames per second (1-120)")

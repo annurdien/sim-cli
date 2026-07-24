@@ -1,7 +1,5 @@
 // EntryPoint.mm
-// dylib constructor — called automatically by dyld when the library is loaded.
-// Checks the IRIS_PATH environment variable, opens shared memory,
-// and installs AVFoundation hooks.
+// Initializes the injector, parses settings, and installs AVFoundation hooks.
 
 #import <Foundation/Foundation.h>
 #import "CaptureHooks.h"
@@ -10,7 +8,6 @@
 #include <cstdlib>
 #include <string>
 
-// Process-global reader (heap-allocated; intentional lifetime until process exit).
 static SharedFrameReader* gGlobalReader = nullptr;
 
 static int32_t parseFPS(void) {
@@ -35,10 +32,9 @@ static void IrisInjectInit(void) {
         gGlobalReader = new SharedFrameReader(shmPath);
 
         if (!gGlobalReader->open()) {
-            NSLog(@"[IrisInject] ⚠️  Cannot open shared memory at %s. "
+            NSLog(@"[IrisInject] ⚠️ Cannot open shared memory at %s. "
                   "Start 'sim cam start' before launching the app.",
                   shmPath.c_str());
-            // Hooks still installed; they will check isOpen() before delivering.
         }
 
         int32_t fps = parseFPS();

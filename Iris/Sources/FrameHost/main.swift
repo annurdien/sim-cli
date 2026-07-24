@@ -30,9 +30,6 @@ struct FrameHostCommand: ParsableCommand {
     @Option(name: .long, help: "Camera name (substring) or uniqueID to select. Use 'sim cam list' to enumerate devices. Only valid with --camera.")
     var cameraID: String?
 
-    @Option(name: .long, help: "How to scale the camera frame to fit the target resolution: 'fill' (crop to fill, fast) or 'fit' (letterbox, preserves full frame). Only valid with --camera. (default: fill)")
-    var scaleMode: ScaleMode = .fill
-
     @Flag(name: .long, help: "List all available cameras and exit. Does not require --udid.")
     var listCameras: Bool = false
 
@@ -118,9 +115,7 @@ struct FrameHostCommand: ParsableCommand {
                 fps:        fps,
                 udid:       udid,
                 statusPath: statusPath,
-                cameraID:   cameraID,
-                scaleMode:  scaleMode
-            )
+                cameraID:   cameraID            )
             try camSource?.start()
         } else {
             let frame: BGRAFrame
@@ -153,22 +148,20 @@ struct FrameHostCommand: ParsableCommand {
         signal(SIGTERM, SIG_IGN)
         signal(SIGINT, SIG_IGN)
 
-        let sigTerm = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
-        sigTerm.setEventHandler {
-            print("[FrameHost] received SIGTERM — shutting down.")
+        let shutdown: (Int32) -> Void = { sig in
+            let sigName = sig == SIGTERM ? "SIGTERM" : "SIGINT"
+            print("[FrameHost] received \(sigName) — shutting down.")
             loop?.stop()
             camSource?.stop()
             Foundation.exit(0)
         }
+
+        let sigTerm = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+        sigTerm.setEventHandler { shutdown(SIGTERM) }
         sigTerm.resume()
 
         let sigInt = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
-        sigInt.setEventHandler {
-            print("[FrameHost] received SIGINT — shutting down.")
-            loop?.stop()
-            camSource?.stop()
-            Foundation.exit(0)
-        }
+        sigInt.setEventHandler { shutdown(SIGINT) }
         sigInt.resume()
 
         // Park the main thread.
@@ -181,6 +174,3 @@ FrameHostCommand.main()
 
 // MARK: - ArgumentParser conformance
 
-extension ScaleMode: ExpressibleByArgument {
-    init?(argument: String) { self.init(rawValue: argument) }
-}

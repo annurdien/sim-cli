@@ -28,9 +28,6 @@ struct CameraInfo {
 // MARK: - CameraDiscovery
 
 enum CameraDiscovery {
-
-    // Device types to discover. continuityCamera requires NSCameraUseContinuityCameraDeviceType
-    // in Info.plist (macOS 14+). externalUnknown catches USB webcams.
     private static var deviceTypes: [AVCaptureDevice.DeviceType] {
         var types: [AVCaptureDevice.DeviceType] = [
             .builtInWideAngleCamera,
@@ -42,9 +39,6 @@ enum CameraDiscovery {
         return types
     }
 
-    // MARK: - Enumerate
-
-    /// Returns all discovered video devices.
     static func allDevices() -> [CameraInfo] {
         let session = AVCaptureDevice.DiscoverySession(
             deviceTypes: deviceTypes,
@@ -60,8 +54,6 @@ enum CameraDiscovery {
             )
         }
     }
-
-    // MARK: - Find
 
     /// Find a device by exact uniqueID or case-insensitive substring of localizedName.
     /// - Returns: the matching `AVCaptureDevice`, or nil if not found.
@@ -87,8 +79,6 @@ enum CameraDiscovery {
         }
     }
 
-    // MARK: - Print Table
-
     /// Prints a formatted table of all discovered cameras to stdout.
     static func printTable() {
         let all = allDevices()
@@ -98,13 +88,10 @@ enum CameraDiscovery {
             return
         }
 
-        // Helper: left-pad a string to exactly `width` characters.
         func lpad(_ s: String, _ width: Int) -> String {
-            if s.count >= width { return String(s.prefix(width)) }
-            return s + String(repeating: " ", count: width - s.count)
+            return s.padding(toLength: width, withPad: " ", startingAt: 0)
         }
 
-        // Column widths (minimum enforced).
         let idColW   = max(12, all.map { $0.uniqueID.count }.max() ?? 12)
         let nameColW = max(24, all.map { $0.localizedName.count }.max() ?? 24)
         let typeColW = max(18, all.map { $0.typeLabel.count }.max() ?? 18)

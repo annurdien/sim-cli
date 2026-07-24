@@ -1,6 +1,4 @@
 // SharedFrameReader.hpp
-// C++ consumer for the shared-memory.
-// Implements the sequence-lock read algorithm to safely extract the IOSurfaceID.
 
 #pragma once
 #include "IrisProtocol.h"
@@ -14,6 +12,7 @@ struct FrameSnapshot {
     uint32_t  width        = 0;
     uint32_t  height       = 0;
     uint32_t  bytesPerRow  = 0;
+    uint32_t  pixelFormat  = 0;
     uint64_t  ptsNs        = 0;    ///< Presentation timestamp (monotonic ns)
     uint64_t  framesProduced = 0;
     uint32_t  ioSurfaceID  = 0;    ///< The zero-copy IOSurface ID

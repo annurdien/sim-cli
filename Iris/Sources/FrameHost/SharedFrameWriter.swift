@@ -20,9 +20,9 @@ final class SharedFrameWriter {
     private var poolWidth: Int = 0
     private var poolHeight: Int = 0
     
-    // Retain buffers so their IOSurfaces stay alive long enough for the consumer to read them.
-    private var retainedBuffers: [CVPixelBuffer] = []
-
+    // Retain buffers we create so they stay alive long enough to be read.
+    private var ourRetainedBuffers: [CVPixelBuffer] = []
+    
     // MARK: - Init / Teardown
 
     init(path: String) {
@@ -51,7 +51,6 @@ final class SharedFrameWriter {
         }
 
         if fd == -1 {
-            // Recreate file
             if FileManager.default.fileExists(atPath: path) {
                 try? FileManager.default.removeItem(atPath: path)
             }
@@ -95,31 +94,29 @@ final class SharedFrameWriter {
                 iris_seq_store_release(ptr, seq &+ 1)
             }
         }
-        
-        ensurePool(width: width, height: height)
+        ensurePool(width: width, height: height, pixelFormat: IRIS_PIXEL_FORMAT)
     }
 
-    private func ensurePool(width: Int, height: Int) {
-        if pool != nil && poolWidth == width && poolHeight == height { return }
+    private var poolPixelFormat: OSType = 0
+
+    private func ensurePool(width: Int, height: Int, pixelFormat: OSType) {
+        if pool != nil && poolWidth == width && poolHeight == height && poolPixelFormat == pixelFormat { return }
         pool = nil
-        retainedBuffers.removeAll()
+        ourRetainedBuffers.removeAll()
         poolWidth = width
         poolHeight = height
+        poolPixelFormat = pixelFormat
 
         let poolAttributes: [String: Any] = [
             kCVPixelBufferPoolMinimumBufferCountKey as String: 6
         ]
         
-        let bytesPerRow = ImageSource.alignedBytesPerRow(width)
-
         let bufferAttributes: [String: Any] = [
-            kCVPixelBufferPixelFormatTypeKey as String: Int(IRIS_PIXEL_FORMAT),
+            kCVPixelBufferPixelFormatTypeKey as String: Int(pixelFormat),
             kCVPixelBufferWidthKey as String: width,
             kCVPixelBufferHeightKey as String: height,
             kCVPixelBufferBytesPerRowAlignmentKey as String: Int(IRIS_ROW_ALIGNMENT),
-            kCVPixelBufferIOSurfacePropertiesKey as String: ["IOSurfaceIsGlobal": true], // Global surface for cross-process
-            kCVPixelBufferCGImageCompatibilityKey as String: true,
-            kCVPixelBufferCGBitmapContextCompatibilityKey as String: true
+            kCVPixelBufferIOSurfacePropertiesKey as String: ["IOSurfaceIsGlobal": true]
         ]
 
         var newPool: CVPixelBufferPool?
@@ -134,7 +131,7 @@ final class SharedFrameWriter {
         }
         mapping = nil
         pool = nil
-        retainedBuffers.removeAll()
+        ourRetainedBuffers.removeAll()
         try? FileManager.default.removeItem(atPath: path)
     }
 
@@ -157,36 +154,36 @@ final class SharedFrameWriter {
         CVPixelBufferUnlockBaseAddress(pixBuf, [])
 
         try publish(poolBuffer: pixBuf, pts: pts)
+        
+        ourRetainedBuffers.append(pixBuf)
+        if ourRetainedBuffers.count > 3 {
+            ourRetainedBuffers.removeFirst()
+        }
     }
 
-    /// Publishes one BGRA frame directly from a CVPixelBuffer (zero-copy if possible).
+    /// Publishes one frame directly from a CVPixelBuffer by copying it into our global pool.
     func publish(pixelBuffer: CVPixelBuffer, pts: UInt64) throws {
+        // We MUST copy incoming AVFoundation buffers into our pool because AVFoundation's
+        // buffers are not marked as global IOSurfaces, so the simulator cannot map them!
+        let width = CVPixelBufferGetWidth(pixelBuffer)
+        let height = CVPixelBufferGetHeight(pixelBuffer)
+        let fmt = CVPixelBufferGetPixelFormatType(pixelBuffer)
+        
+        ensurePool(width: width, height: height, pixelFormat: fmt)
         guard let pool = pool else { throw WriterError.notOpen }
         
         var newBuffer: CVPixelBuffer?
         guard CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pool, &newBuffer) == kCVReturnSuccess,
               let pixBuf = newBuffer else { return }
 
-        CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
-        CVPixelBufferLockBaseAddress(pixBuf, [])
-        
-        if let srcBase = CVPixelBufferGetBaseAddress(pixelBuffer), let dstBase = CVPixelBufferGetBaseAddress(pixBuf) {
-            let srcBPR = CVPixelBufferGetBytesPerRow(pixelBuffer)
-            let dstBPR = CVPixelBufferGetBytesPerRow(pixBuf)
-            let srcHeight = CVPixelBufferGetHeight(pixelBuffer)
-            let dstHeight = CVPixelBufferGetHeight(pixBuf)
-            let copyHeight = min(srcHeight, dstHeight)
-            let copyBytes = min(CVPixelBufferGetWidth(pixelBuffer), CVPixelBufferGetWidth(pixBuf)) * 4
-            
-            for row in 0..<copyHeight {
-                memcpy(dstBase.advanced(by: row * dstBPR), srcBase.advanced(by: row * srcBPR), copyBytes)
-            }
-        }
-        
-        CVPixelBufferUnlockBaseAddress(pixBuf, [])
-        CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly)
+        pixelBuffer.copy(to: pixBuf)
 
         try publish(poolBuffer: pixBuf, pts: pts)
+        
+        ourRetainedBuffers.append(pixBuf)
+        if ourRetainedBuffers.count > 3 {
+            ourRetainedBuffers.removeFirst()
+        }
     }
 
     private func publish(poolBuffer: CVPixelBuffer, pts: UInt64) throws {
@@ -200,16 +197,15 @@ final class SharedFrameWriter {
 
         let hdr = base.bindMemory(to: IRISStreamHeader.self, capacity: 1)
         hdr.pointee.presentationTimeNs = pts
+        hdr.pointee.width = UInt32(CVPixelBufferGetWidth(poolBuffer))
+        hdr.pointee.height = UInt32(CVPixelBufferGetHeight(poolBuffer))
+        hdr.pointee.bytesPerRow = UInt32(CVPixelBufferGetBytesPerRow(poolBuffer))
+        hdr.pointee.pixelFormat = CVPixelBufferGetPixelFormatType(poolBuffer)
 
         iris_iosfc_store_relaxed(base, surfaceID)
 
         iris_seq_store_release(base, seqBefore &+ 2)
         _ = iris_fp_fetch_add(base, 1)
-
-        retainedBuffers.append(poolBuffer)
-        if retainedBuffers.count > 3 {
-            retainedBuffers.removeFirst()
-        }
     }
 
     /// Returns the number of frames successfully published so far.
