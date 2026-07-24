@@ -13,7 +13,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -53,23 +52,11 @@ type camSimDevice struct {
 	CamFPS    int
 }
 
-type ResolutionPreset struct {
-	title       string
-	description string
-	width       int
-	height      int
-}
-
-func (r ResolutionPreset) Title() string       { return r.title }
-func (r ResolutionPreset) Description() string { return r.description }
-func (r ResolutionPreset) FilterValue() string { return r.title }
-
 type camDashboardModel struct {
 	focused         focusPane
 	simTable        table.Model
 	appTable        table.Model
 	cameraTable     table.Model
-	presetList      list.Model
 	filterInput     textinput.Model
 	spinner         spinner.Model
 	simulators      []camSimDevice
@@ -79,9 +66,6 @@ type camDashboardModel struct {
 	selectedSimUDID string
 	selectedSimName string
 	showSystemApps  bool
-	showPopup       bool
-	camWidth        int
-	camHeight       int
 	msg             string
 	loading         bool
 	width           int
@@ -309,9 +293,6 @@ func (m camDashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.MouseMsg:
-		if m.showPopup {
-			break
-		}
 		if msg.Action == tea.MouseActionRelease && msg.Button == tea.MouseButtonLeft {
 			availWidth := m.width - 8
 			if availWidth < 90 {
@@ -345,28 +326,6 @@ func (m camDashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, cmd)
 
 	case tea.KeyMsg:
-		if m.showPopup {
-			switch msg.String() {
-			case "q", "ctrl+c":
-				return m, tea.Quit
-			case "esc":
-				m.showPopup = false
-				return m, nil
-			case "enter":
-				if i, ok := m.presetList.SelectedItem().(ResolutionPreset); ok {
-					m.camWidth = i.width
-					m.camHeight = i.height
-					m.msg = fmt.Sprintf("Resolution set to %dx%d", i.width, i.height)
-				}
-				m.showPopup = false
-				return m, nil
-			}
-			var cmd tea.Cmd
-			m.presetList, cmd = m.presetList.Update(msg)
-			cmds = append(cmds, cmd)
-			return m, tea.Batch(cmds...)
-		}
-
 		if m.focused == paneApps && m.filterInput.Focused() {
 			if msg.String() == "enter" || msg.String() == "esc" {
 				m.filterInput.Blur()
@@ -388,9 +347,6 @@ func (m camDashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "shift+tab", "h", "left":
 				m.focused = (m.focused + 2) % 3
 				updateTableFocus(&m)
-				return m, nil
-			case "o":
-				m.showPopup = true
 				return m, nil
 			case "x":
 				if m.selectedSimUDID != "" {
@@ -425,7 +381,7 @@ func (m camDashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.loading = true
 						m.msg = "Starting camera feed for " + m.selectedSimName + "..."
 						cmds = append(cmds, doActionCmd(func() error {
-							return startCameraForDevice(m.selectedSimUDID, true, "", camID, m.camWidth, m.camHeight)
+							return startCameraForDevice(m.selectedSimUDID, true, "", camID)
 						}, "Started camera feed for "+m.selectedSimName))
 					}
 				case paneApps:
@@ -493,8 +449,6 @@ func (m camDashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			{Title: "Type", Width: aw3},
 		})
 
-		m.presetList.SetSize(60, 20)
-
 	case camRefreshMsg:
 		rows := make([]table.Row, 0, len(msg))
 		for _, d := range msg {
@@ -557,7 +511,7 @@ func (m camDashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	oldSimUDID := m.selectedSimUDID
 
-	if m.focused == paneSimulators && !m.showPopup {
+	if m.focused == paneSimulators {
 		var tableCmd tea.Cmd
 		m.simTable, tableCmd = m.simTable.Update(msg)
 		cmds = append(cmds, tableCmd)
@@ -567,11 +521,11 @@ func (m camDashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.selectedSimUDID = m.simulators[idx].UDID
 			m.selectedSimName = m.simulators[idx].Name
 		}
-	} else if m.focused == paneCameras && !m.showPopup {
+	} else if m.focused == paneCameras {
 		var camTableCmd tea.Cmd
 		m.cameraTable, camTableCmd = m.cameraTable.Update(msg)
 		cmds = append(cmds, camTableCmd)
-	} else if m.focused == paneApps && !m.showPopup {
+	} else if m.focused == paneApps {
 		var appTableCmd tea.Cmd
 		m.appTable, appTableCmd = m.appTable.Update(msg)
 		cmds = append(cmds, appTableCmd)
@@ -623,7 +577,7 @@ func (m camDashboardModel) View() string {
 
 	mainContent := lipgloss.JoinHorizontal(lipgloss.Top, pane1, pane2, pane3)
 
-	footer := " Controls: [tab/h/l] Switch Pane • [j/k] Navigate • [enter] Action • [x] Stop Cam • [o] Resolution • [t] Toggle SysApps • [r] Refresh • [q] Quit\n "
+	footer := " Controls: [tab/h/l] Switch Pane • [j/k] Navigate • [enter] Action • [x] Stop Cam • [t] Toggle SysApps • [r] Refresh • [q] Quit\n "
 	if m.loading {
 		footer += m.spinner.View() + " " + lipgloss.NewStyle().Foreground(ColorIOS).Render(m.msg)
 	} else if m.msg != "" {
@@ -632,24 +586,10 @@ func (m camDashboardModel) View() string {
 
 	ui := lipgloss.JoinVertical(lipgloss.Left, mainContent, footer)
 
-	if m.showPopup {
-		popupStyle := lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("62")).
-			Padding(1, 2).
-			Background(lipgloss.Color("236")).
-			Foreground(lipgloss.Color("252"))
-
-		popupView := popupStyle.Render(m.presetList.View())
-
-		// Create a full screen container and place the popup in the center
-		ui = lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, popupView, lipgloss.WithWhitespaceChars(" "))
-	}
-
 	return ui
 }
 
-func startCameraForDevice(udid string, useCamera bool, imagePath string, cameraID string, width, height int) error {
+func startCameraForDevice(udid string, useCamera bool, imagePath string, cameraID string) error {
 	irisDirVal := getIrisDir()
 	bin := frameHostBin(irisDirVal)
 	if _, err := os.Stat(bin); err != nil {
@@ -661,8 +601,6 @@ func startCameraForDevice(udid string, useCamera bool, imagePath string, cameraI
 
 	args := []string{
 		"--udid", udid,
-		"--width", fmt.Sprintf("%d", width),
-		"--height", fmt.Sprintf("%d", height),
 		"--fps", fmt.Sprintf("%d", DefaultCamFPS),
 	}
 
@@ -778,30 +716,15 @@ func runCamDashboard() error {
 	ti.CharLimit = 156
 	ti.Width = 20
 
-	presetItems := []list.Item{
-		ResolutionPreset{title: "720p (16:9)", description: "1280 x 720 (Default)", width: 1280, height: 720},
-		ResolutionPreset{title: "1080p (16:9)", description: "1920 x 1080", width: 1920, height: 1080},
-		ResolutionPreset{title: "4K (16:9)", description: "3840 x 2160", width: 3840, height: 2160},
-		ResolutionPreset{title: "Vertical HD (9:16)", description: "1080 x 1920", width: 1080, height: 1920},
-		ResolutionPreset{title: "Square (1:1)", description: "1080 x 1080", width: 1080, height: 1080},
-	}
-	presetList := list.New(presetItems, list.NewDefaultDelegate(), 60, 20)
-	presetList.Title = "Select Camera Resolution & Aspect Ratio"
-	presetList.SetShowHelp(false)
-	presetList.SetShowStatusBar(false)
-
 	m := camDashboardModel{
 		focused:     paneSimulators,
 		simTable:    tSim,
 		appTable:    tApp,
 		cameraTable: tCam,
-		presetList:  presetList,
 		filterInput: ti,
 		spinner:     sp,
 		msg:         "Ready.",
 		simulators:  initialSims,
-		camWidth:    DefaultCamWidth,
-		camHeight:   DefaultCamHeight,
 	}
 
 	if len(initialSims) > 0 {
