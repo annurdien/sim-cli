@@ -511,7 +511,8 @@ func (m camDashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	oldSimUDID := m.selectedSimUDID
 
-	if m.focused == paneSimulators {
+	switch m.focused {
+	case paneSimulators:
 		var tableCmd tea.Cmd
 		m.simTable, tableCmd = m.simTable.Update(msg)
 		cmds = append(cmds, tableCmd)
@@ -521,11 +522,11 @@ func (m camDashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.selectedSimUDID = m.simulators[idx].UDID
 			m.selectedSimName = m.simulators[idx].Name
 		}
-	} else if m.focused == paneCameras {
+	case paneCameras:
 		var camTableCmd tea.Cmd
 		m.cameraTable, camTableCmd = m.cameraTable.Update(msg)
 		cmds = append(cmds, camTableCmd)
-	} else if m.focused == paneApps {
+	case paneApps:
 		var appTableCmd tea.Cmd
 		m.appTable, appTableCmd = m.appTable.Update(msg)
 		cmds = append(cmds, appTableCmd)

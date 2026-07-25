@@ -23,8 +23,6 @@ type capturer interface {
 	GetName() string
 }
 
-
-
 type iOSSimulator struct {
 	udid string
 	name string
@@ -85,8 +83,6 @@ func (s *iOSSimulator) Record(ctx context.Context, outputFile string) error {
 func (s *iOSSimulator) GetName() string {
 	return s.name
 }
-
-
 
 type androidEmulator struct {
 	udid string
@@ -179,8 +175,6 @@ func (e *androidEmulator) Record(ctx context.Context, outputFile string) error {
 func (e *androidEmulator) GetName() string {
 	return e.name
 }
-
-
 
 func getCapturer(deviceID string) (capturer, error) {
 	if deviceID == "" {
@@ -299,8 +293,6 @@ func handleRecording(c capturer, outputFile string, duration, fps, scale int, co
 
 	return nil
 }
-
-
 
 var screenshotCmd = &cobra.Command{
 	Use:               "screenshot [device-name-or-udid] [output-file]",

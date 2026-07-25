@@ -11,8 +11,6 @@ import (
 	"github.com/atotto/clipboard"
 )
 
-
-
 // GenerateFilename creates a timestamped filename with the given prefix, device ID, and extension.
 func GenerateFilename(prefix, deviceID, extension string) string {
 	timestamp := time.Now().Format("20060102_150405")
@@ -26,8 +24,6 @@ func GenerateFilename(prefix, deviceID, extension string) string {
 func EnsureExtension(filename, ext string) string {
 	return strings.TrimSuffix(filename, filepath.Ext(filename)) + ext
 }
-
-
 
 func copyToClipboard(text string) error {
 	return clipboard.WriteAll(text)
@@ -101,16 +97,12 @@ func copyFileToClipboardLinux(filePath, ext string) error {
 	return nil
 }
 
-
-
 // CommandExists reports whether the named executable exists in the system PATH.
 func CommandExists(cmd string) bool {
 	_, err := exec.LookPath(cmd)
 
 	return err == nil
 }
-
-
 
 // ValidateRecordingDuration returns an error if duration is negative.
 func ValidateRecordingDuration(duration int) error {
@@ -120,8 +112,6 @@ func ValidateRecordingDuration(duration int) error {
 
 	return nil
 }
-
-
 
 func convertToGIF(inputFile, outputFile string, fps, scale int) error {
 	if !CommandExists(CmdFFmpeg) {
