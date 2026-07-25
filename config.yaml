@@ -1,4 +1,4 @@
 app:
   name: "sim-cli"
-  version: "1.8.0"
-  description: "CLI tool to manage iOS simulators and Android emulators"
+  version: "1.8.1"
+  description: "CLI tool to manage iOS simulators and Android emulators."
