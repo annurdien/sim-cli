@@ -18,8 +18,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-
-
 // camIrisDirFlag is an optional override for the Iris directory.
 var camIrisDirFlag string
 
@@ -99,7 +97,7 @@ func findRunningIOSSimulator(deviceID string) (udid, name string, err error) {
 		return "", "", err
 	}
 	if isAndroid {
-		return "", "", fmt.Errorf("Iris only supports booted iOS Simulators, not Android emulators")
+		return "", "", fmt.Errorf("iris only supports booted iOS Simulators, not Android emulators")
 	}
 	return udid, name, nil
 }
@@ -150,8 +148,6 @@ func frameHostFPS(udid string) int {
 	return status.FPS
 }
 
-
-
 var camCmd = &cobra.Command{
 	Use:   "cam",
 	Short: "iOS Simulator camera injector",
@@ -175,15 +171,13 @@ Quick start:
 	},
 }
 
-
-
 var (
-	camStartImage     string
-	camStartBars      bool
-	camStartCamera    bool
-	camStartCameraID  string
-	camStartFPS       int
-	camStartDevice    string
+	camStartImage    string
+	camStartBars     bool
+	camStartCamera   bool
+	camStartCameraID string
+	camStartFPS      int
+	camStartDevice   string
 )
 
 var camStartCmd = &cobra.Command{
@@ -293,8 +287,6 @@ Examples:
 	},
 }
 
-
-
 var camListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all available cameras on this Mac",
@@ -320,8 +312,6 @@ Example:
 		return c.Run()
 	},
 }
-
-
 
 var (
 	camLaunchBundle string
@@ -407,8 +397,6 @@ Example:
 		return nil
 	},
 }
-
-
 
 var camStatusDevice string
 
@@ -498,8 +486,6 @@ var camStatusCmd = &cobra.Command{
 		return nil
 	},
 }
-
-
 
 var camStopDevice string
 
@@ -608,8 +594,6 @@ func stopFrameHost(udid string) error {
 
 	return nil
 }
-
-
 
 func init() {
 	// cam-level flag: --iris-dir override (hidden for end users)
