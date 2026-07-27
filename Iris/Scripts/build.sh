@@ -135,6 +135,7 @@ compile_arch() {
         -framework Foundation \
         -framework QuartzCore \
         -framework VideoToolbox \
+        -framework CoreImage \
         -framework CoreGraphics \
         -framework IOSurface \
         "${BUILD_DIR}/SharedFrameReader_${ARCH}.o" \

@@ -218,6 +218,16 @@ Open the camera management dashboard:
 sim cam
 ```
 
+Apps that scan with `AVCaptureMetadataOutput` work too: the injector runs QR
+and face detection over the injected frames and delivers real
+`AVMetadataMachineReadableCodeObject`s to the app's metadata delegate, so
+pointing the camera at a QR code (`sim cam start --image qr.png`, or just
+holding one up to your webcam) triggers the app's scanner.
+
+```bash
+sim cam start --image qr.png     # the app's QR scanner fires as if it saw a code
+```
+
 Read the [SIM-CLI Camera Architecture](docs/SIM_CAM_ARCHITECTURE.md) for technical details on shared memory and dylib injection.
 
 ## Configuration

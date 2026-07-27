@@ -42,3 +42,9 @@
 // If no frame is published within this many nanoseconds, the injector treats
 // the producer as stalled and may deliver a placeholder frame.
 #define IRIS_STALE_THRESHOLD_NS  (500 * 1000 * 1000ull)  // 500 ms
+
+// Recognition (barcode/face) cadence
+// Vision runs over the injected frames to synthesise AVCaptureMetadataOutput
+// results. Detection costs milliseconds per frame and no consumer benefits
+// from scanning every one, so it is throttled to this interval (seconds).
+#define IRIS_RECOGNITION_INTERVAL 0.2

@@ -212,6 +212,44 @@ flowchart LR
 
 The host app receives the delegate callbacks exactly as it would from a hardware camera.
 
+### Metadata objects (QR codes and faces)
+
+Apps that scan codes rarely read pixels themselves — they attach an
+`AVCaptureMetadataOutput` and wait for `AVMetadataMachineReadableCodeObject`s.
+Nothing in the injected session produces those, because there is no real
+capture connection behind it, so the injector runs detection itself over the
+same frame it just delivered and calls the app's metadata delegate directly.
+
+```mermaid
+flowchart LR
+    Frame["Injected CVPixelBuffer"] --> Detector["CIDetector<br>QR / face"]
+    Detector --> Objects["MSCFakeMachineReadableCodeObject<br>MSCFakeFaceObject"]
+    Objects --> Delegate["AVCaptureMetadataOutputObjectsDelegate"]
+```
+
+Three constraints shape this:
+
+- **Vision is unavailable in the Simulator.** Every `VNImageRequestHandler`
+  fails with *"Could not create inference context"*, which rules out
+  `VNDetectBarcodesRequest` and its full symbology set. Core Image's older CPU
+  detectors do work, so detection uses `CIDetector` — which covers **QR codes
+  and faces only**. `availableMetadataObjectTypes` advertises exactly those two,
+  because apps intersect their requested types against that list and would
+  otherwise wait forever for an EAN or PDF417 callback.
+- **Detection is throttled** to `IRIS_RECOGNITION_INTERVAL` (200 ms) and
+  single-flight, on its own serial queue. Frames arrive at up to 120fps;
+  scanning every one costs milliseconds each and gains nothing.
+- **Metadata objects are pooled, never released.** `AVMetadataObject`'s
+  `-dealloc` walks internals that `class_createInstance` never set up and
+  segfaults — reproducibly, even on an instance with nothing assigned. A fixed
+  ring of instances is allocated once and recycled, so that `dealloc` never
+  runs and memory stays bounded. An object is valid for the callback it arrives
+  in, the same lifetime the real API promises.
+
+`AVCaptureMetadataOutput.setMetadataObjectTypes:` is intercepted and recorded
+rather than forwarded: the real setter validates against its own (empty)
+available list and raises `NSInvalidArgumentException`.
+
 ---
 
 ## 4. Camera Switching Logic
