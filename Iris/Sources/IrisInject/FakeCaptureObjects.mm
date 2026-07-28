@@ -112,48 +112,113 @@
 /// AVMetadataObject's own -dealloc walks internals that class_createInstance
 /// never set up and segfaults — reproducibly, even on an instance with nothing
 /// assigned — so these must never be deallocated. Recycling a fixed set keeps
-/// memory bounded instead. An object stays valid for the delegate callback it
-/// is delivered in, which is the same lifetime the real API promises; it is
-/// reused after MSC_METADATA_POOL_SIZE further detections.
+/// memory bounded instead.
+///
+/// Slots are checked out and back in rather than handed round a ring, because a
+/// pooled object's ivars are written by the recognition queue and read by the
+/// delegate on a queue we don't control. A ring makes overlap merely unlikely
+/// (bounded by pool size × cadence); check-out makes it impossible — a slot is
+/// never handed out again until the callback it was delivered in has returned,
+/// which is exactly the lifetime the real API promises. Callers must therefore
+/// pair every acquisition with MSCReleasePooledMetadataObjects.
+///
+/// If every slot is checked out the pool grows, up to a hard cap; past that,
+/// acquisition returns nil and the caller drops that object. A pathological
+/// delegate that never returns costs detections, not memory or correctness.
 #define MSC_METADATA_POOL_SIZE 16
+#define MSC_METADATA_POOL_MAX 64
 
-static id MSCPooledMetadataObject(Class cls) {
-    static NSMutableDictionary<NSString *, NSMutableArray *> *pools = nil;
-    static NSMutableDictionary<NSString *, NSNumber *> *cursors = nil;
-    static os_unfair_lock lock = OS_UNFAIR_LOCK_INIT;
+static NSMutableDictionary<NSString *, NSMutableArray *> *sMetadataPools = nil;
+static NSMutableDictionary<NSString *, NSMutableIndexSet *> *sMetadataInUse = nil;
+static os_unfair_lock sMetadataPoolLock = OS_UNFAIR_LOCK_INIT;
+
+static void MSCMetadataPoolInit(void) {
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        pools = [NSMutableDictionary dictionary];
-        cursors = [NSMutableDictionary dictionary];
+        sMetadataPools = [NSMutableDictionary dictionary];
+        sMetadataInUse = [NSMutableDictionary dictionary];
     });
+}
+
+/// Never released — see the pool note above, and the +1 from
+/// class_createInstance is deliberately abandoned.
+static id MSCCreateUnreleasedInstance(Class cls) {
+    return class_createInstance(cls, 0);
+}
+
+static id MSCAcquirePooledMetadataObject(Class cls) {
+    MSCMetadataPoolInit();
 
     NSString *key = NSStringFromClass(cls);
-    os_unfair_lock_lock(&lock);
+    os_unfair_lock_lock(&sMetadataPoolLock);
 
-    NSMutableArray *pool = pools[key];
+    NSMutableArray *pool = sMetadataPools[key];
     if (!pool) {
         pool = [NSMutableArray arrayWithCapacity:MSC_METADATA_POOL_SIZE];
         for (NSUInteger i = 0; i < MSC_METADATA_POOL_SIZE; i++) {
-            // __bridge, not __bridge_transfer: the array's retain is the only
-            // ownership these ever get, so nothing releases them back to zero.
-            id instance = (__bridge id)(__bridge void *)class_createInstance(cls, 0);
+            id instance = MSCCreateUnreleasedInstance(cls);
             if (instance) {
                 [pool addObject:instance];
             }
         }
-        pools[key] = pool;
-        cursors[key] = @0;
+        sMetadataPools[key] = pool;
+        sMetadataInUse[key] = [NSMutableIndexSet indexSet];
+    }
+
+    NSMutableIndexSet *inUse = sMetadataInUse[key];
+    NSUInteger slot = NSNotFound;
+    for (NSUInteger i = 0; i < pool.count; i++) {
+        if (![inUse containsIndex:i]) {
+            slot = i;
+            break;
+        }
+    }
+    if (slot == NSNotFound && pool.count < MSC_METADATA_POOL_MAX) {
+        id instance = MSCCreateUnreleasedInstance(cls);
+        if (instance) {
+            [pool addObject:instance];
+            slot = pool.count - 1;
+        }
     }
 
     id object = nil;
-    if (pool.count > 0) {
-        NSUInteger cursor = cursors[key].unsignedIntegerValue % pool.count;
-        object = pool[cursor];
-        cursors[key] = @(cursor + 1);
+    if (slot != NSNotFound) {
+        [inUse addIndex:slot];
+        object = pool[slot];
+    }
+    NSUInteger checkedOut = inUse.count;
+
+    os_unfair_lock_unlock(&sMetadataPoolLock);
+
+    if (!object) {
+        // Only reachable if delegate callbacks are not returning: every slot is
+        // still checked out at the cap. Say so — the alternative is detections
+        // that quietly stop producing results.
+        NSLog(@"[IrisInject] Metadata pool exhausted (%lu/%d checked out) — "
+              @"dropping a %@. Is the metadata delegate blocking its queue?",
+              (unsigned long)checkedOut, MSC_METADATA_POOL_MAX, key);
+    }
+    return object;
+}
+
+void MSCReleasePooledMetadataObjects(NSArray *objects) {
+    if (objects.count == 0) {
+        return;
     }
 
-    os_unfair_lock_unlock(&lock);
-    return object;
+    os_unfair_lock_lock(&sMetadataPoolLock);
+    for (id object in objects) {
+        NSString *key = NSStringFromClass(object_getClass(object));
+        NSMutableArray *pool = sMetadataPools[key];
+        if (!pool) {
+            continue;
+        }
+        NSUInteger slot = [pool indexOfObjectIdenticalTo:object];
+        if (slot != NSNotFound) {
+            [sMetadataInUse[key] removeIndex:slot];
+        }
+    }
+    os_unfair_lock_unlock(&sMetadataPoolLock);
 }
 
 @implementation MSCFakeMachineReadableCodeObject {
@@ -170,7 +235,7 @@ static id MSCPooledMetadataObject(Class cls) {
                        corners:(NSArray<NSDictionary *> *)corners
                           time:(CMTime)time {
     MSCFakeMachineReadableCodeObject *object =
-        MSCPooledMetadataObject([MSCFakeMachineReadableCodeObject class]);
+        MSCAcquirePooledMetadataObject([MSCFakeMachineReadableCodeObject class]);
     if (object) {
         object->_irisType = [type copy];
         object->_irisStringValue = [stringValue copy];
@@ -186,7 +251,9 @@ static id MSCPooledMetadataObject(Class cls) {
 - (CGRect)bounds { return _irisBounds; }
 - (NSArray<NSDictionary *> *)corners { return _irisCorners ?: @[]; }
 - (CMTime)time { return _irisTime; }
-- (CMTime)duration { return kCMTimeZero; }
+// CMTimeMake, not the deprecated kCMTimeZero. Detection is instantaneous from
+// the consumer's point of view: one frame in, one result out.
+- (CMTime)duration { return CMTimeMake(0, 1); }
 @end
 
 @implementation MSCFakeFaceObject {
@@ -199,7 +266,7 @@ static id MSCPooledMetadataObject(Class cls) {
                           bounds:(CGRect)bounds
                             time:(CMTime)time {
     MSCFakeFaceObject *object =
-        MSCPooledMetadataObject([MSCFakeFaceObject class]);
+        MSCAcquirePooledMetadataObject([MSCFakeFaceObject class]);
     if (object) {
         object->_irisFaceID = faceID;
         object->_irisBounds = bounds;
@@ -209,10 +276,15 @@ static id MSCPooledMetadataObject(Class cls) {
 }
 
 - (AVMetadataObjectType)type { return AVMetadataObjectTypeFace; }
+// Not a tracking id, unlike the real one: CIDetector offers no identity across
+// frames, so this is only an index within a single detection pass. Apps that
+// follow a face between frames by faceID won't work here.
 - (NSInteger)faceID { return _irisFaceID; }
 - (CGRect)bounds { return _irisBounds; }
 - (CMTime)time { return _irisTime; }
-- (CMTime)duration { return kCMTimeZero; }
+// CMTimeMake, not the deprecated kCMTimeZero. Detection is instantaneous from
+// the consumer's point of view: one frame in, one result out.
+- (CMTime)duration { return CMTimeMake(0, 1); }
 - (BOOL)hasRollAngle { return NO; }
 - (BOOL)hasYawAngle { return NO; }
 @end

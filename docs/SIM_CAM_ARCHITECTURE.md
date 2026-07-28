@@ -238,17 +238,35 @@ Three constraints shape this:
   otherwise wait forever for an EAN or PDF417 callback.
 - **Detection is throttled** to `IRIS_RECOGNITION_INTERVAL` (200 ms) and
   single-flight, on its own serial queue. Frames arrive at up to 120fps;
-  scanning every one costs milliseconds each and gains nothing.
+  scanning every one costs milliseconds each and gains nothing. The flag that
+  enforces single-flight is read *and* claimed inside one lock region, so two
+  frames arriving together can't both start a pass.
 - **Metadata objects are pooled, never released.** `AVMetadataObject`'s
   `-dealloc` walks internals that `class_createInstance` never set up and
-  segfaults — reproducibly, even on an instance with nothing assigned. A fixed
-  ring of instances is allocated once and recycled, so that `dealloc` never
-  runs and memory stays bounded. An object is valid for the callback it arrives
-  in, the same lifetime the real API promises.
+  segfaults — reproducibly, even on an instance with nothing assigned. A pool of
+  instances is allocated once and recycled, so that `dealloc` never runs and
+  memory stays bounded.
+
+  Slots are **checked out and back in**, not handed round a ring. A pooled
+  object's ivars are written on the recognition queue and read by the delegate on
+  a queue the injector doesn't control, so a slot is only reusable once the
+  callback carrying it has returned — which is exactly the lifetime the real API
+  promises. A ring would make overlap unlikely (bounded by pool size × cadence)
+  rather than impossible. The pool grows on demand to a hard cap; past that,
+  detection drops objects instead of consuming memory, so a delegate that never
+  returns costs results rather than correctness.
 
 `AVCaptureMetadataOutput.setMetadataObjectTypes:` is intercepted and recorded
 rather than forwarded: the real setter validates against its own (empty)
-available list and raises `NSInvalidArgumentException`.
+available list and raises `NSInvalidArgumentException`. Its
+`availableMetadataObjectTypes` getter is likewise answered locally, for the
+mirror-image reason — the real one reports what the absent hardware supports,
+i.e. nothing, so an app intersecting against it would never attach a scanner.
+
+**Known limitation:** `AVMetadataFaceObject.faceID` is a *tracking* id on real
+hardware, stable for a face across frames. `CIDetector` exposes no identity
+between frames, so the synthesised `faceID` is only an index within one detection
+pass — apps that follow a face by id won't behave as they would on a device.
 
 ---
 

@@ -239,6 +239,11 @@ NSDictionary *MSCNormalisedCorner(CGPoint point, CGRect extent) {
   startDelivery();
 }
 
+// Also deliberately NOT chained, and for the mirror-image reason to the setter
+// below: the real getter reports what the (absent) capture hardware supports,
+// which in the Simulator is an empty list — an app intersecting its wanted types
+// against that gets nothing and never attaches a scanner at all. What we can
+// actually synthesise is the honest answer here.
 - (NSArray<AVMetadataObjectType> *)iris_availableMetadataObjectTypes {
   return MSCSupportedMetadataTypes();
 }
@@ -491,34 +496,31 @@ void stopDelivery(void) {
 /// costs milliseconds each, and nothing downstream benefits from scanning every
 /// one.
 void runRecognition(CVPixelBufferRef pixelBuffer, CMTime time) {
+  CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
+
+  // One lock region, every precondition and the claim together: reading the
+  // in-flight flag and setting it have to be atomic, or two frames arriving back
+  // to back can both observe "not in flight" and each enqueue a pass.
   os_unfair_lock_lock(&gState.lock);
   id<AVCaptureMetadataOutputObjectsDelegate> delegate = gState.metadataDelegate;
   dispatch_queue_t delegateQueue = gState.metadataDelegateQueue;
   AVCaptureMetadataOutput *output = gState.metadataOutput;
   NSArray<AVMetadataObjectType> *requested = gState.requestedMetadataTypes;
-  bool inFlight = gState.recognitionInFlight;
-  CFAbsoluteTime last = gState.lastRecognition;
   dispatch_queue_t queue = gState.recognitionQueue;
-  os_unfair_lock_unlock(&gState.lock);
-
-  if (!delegate || !delegateQueue || !queue || requested.count == 0)
-    return;
-  if (inFlight)
-    return;
-
-  CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
-  if (now - last < IRIS_RECOGNITION_INTERVAL)
-    return;
 
   bool wantsCodes = [requested containsObject:AVMetadataObjectTypeQRCode];
   bool wantsFaces = [requested containsObject:AVMetadataObjectTypeFace];
-  if (!wantsCodes && !wantsFaces)
-    return;
-
-  os_unfair_lock_lock(&gState.lock);
-  gState.recognitionInFlight = true;
-  gState.lastRecognition = now;
+  bool claimed = delegate && delegateQueue && queue &&
+                 (wantsCodes || wantsFaces) && !gState.recognitionInFlight &&
+                 (now - gState.lastRecognition >= IRIS_RECOGNITION_INTERVAL);
+  if (claimed) {
+    gState.recognitionInFlight = true;
+    gState.lastRecognition = now;
+  }
   os_unfair_lock_unlock(&gState.lock);
+
+  if (!claimed)
+    return;
 
   CVPixelBufferRetain(pixelBuffer);
   dispatch_async(queue, ^{
@@ -600,6 +602,9 @@ void runRecognition(CVPixelBufferRef pixelBuffer, CMTime time) {
             didOutputMetadataObjects:objects
                       fromConnection:connection];
       }
+      // Back into the pool only now the callback has returned — while it was
+      // running, these slots were exclusively the delegate's to read.
+      MSCReleasePooledMetadataObjects(objects);
     });
   });
 }
