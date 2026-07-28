@@ -138,6 +138,7 @@ compile_arch() {
         -framework CoreImage \
         -framework CoreGraphics \
         -framework IOSurface \
+        -framework UIKit \
         "${BUILD_DIR}/SharedFrameReader_${ARCH}.o" \
         "${BUILD_DIR}/SampleBufferFactory_${ARCH}.o" \
         "${BUILD_DIR}/CaptureHooks_${ARCH}.o" \
