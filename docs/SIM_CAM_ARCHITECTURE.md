@@ -212,6 +212,62 @@ flowchart LR
 
 The host app receives the delegate callbacks exactly as it would from a hardware camera.
 
+### Metadata objects (QR codes and faces)
+
+Apps that scan codes rarely read pixels themselves — they attach an
+`AVCaptureMetadataOutput` and wait for `AVMetadataMachineReadableCodeObject`s.
+Nothing in the injected session produces those, because there is no real
+capture connection behind it, so the injector runs detection itself over the
+same frame it just delivered and calls the app's metadata delegate directly.
+
+```mermaid
+flowchart LR
+    Frame["Injected CVPixelBuffer"] --> Detector["CIDetector<br>QR / face"]
+    Detector --> Objects["MSCFakeMachineReadableCodeObject<br>MSCFakeFaceObject"]
+    Objects --> Delegate["AVCaptureMetadataOutputObjectsDelegate"]
+```
+
+Three constraints shape this:
+
+- **Vision is unavailable in the Simulator.** Every `VNImageRequestHandler`
+  fails with *"Could not create inference context"*, which rules out
+  `VNDetectBarcodesRequest` and its full symbology set. Core Image's older CPU
+  detectors do work, so detection uses `CIDetector` — which covers **QR codes
+  and faces only**. `availableMetadataObjectTypes` advertises exactly those two,
+  because apps intersect their requested types against that list and would
+  otherwise wait forever for an EAN or PDF417 callback.
+- **Detection is throttled** to `IRIS_RECOGNITION_INTERVAL` (200 ms) and
+  single-flight, on its own serial queue. Frames arrive at up to 120fps;
+  scanning every one costs milliseconds each and gains nothing. The flag that
+  enforces single-flight is read *and* claimed inside one lock region, so two
+  frames arriving together can't both start a pass.
+- **Metadata objects are pooled, never released.** `AVMetadataObject`'s
+  `-dealloc` walks internals that `class_createInstance` never set up and
+  segfaults — reproducibly, even on an instance with nothing assigned. A pool of
+  instances is allocated once and recycled, so that `dealloc` never runs and
+  memory stays bounded.
+
+  Slots are **checked out and back in**, not handed round a ring. A pooled
+  object's ivars are written on the recognition queue and read by the delegate on
+  a queue the injector doesn't control, so a slot is only reusable once the
+  callback carrying it has returned — which is exactly the lifetime the real API
+  promises. A ring would make overlap unlikely (bounded by pool size × cadence)
+  rather than impossible. The pool grows on demand to a hard cap; past that,
+  detection drops objects instead of consuming memory, so a delegate that never
+  returns costs results rather than correctness.
+
+`AVCaptureMetadataOutput.setMetadataObjectTypes:` is intercepted and recorded
+rather than forwarded: the real setter validates against its own (empty)
+available list and raises `NSInvalidArgumentException`. Its
+`availableMetadataObjectTypes` getter is likewise answered locally, for the
+mirror-image reason — the real one reports what the absent hardware supports,
+i.e. nothing, so an app intersecting against it would never attach a scanner.
+
+**Known limitation:** `AVMetadataFaceObject.faceID` is a *tracking* id on real
+hardware, stable for a face across frames. `CIDetector` exposes no identity
+between frames, so the synthesised `faceID` is only an index within one detection
+pass — apps that follow a face by id won't behave as they would on a device.
+
 ---
 
 ## 4. Camera Switching Logic

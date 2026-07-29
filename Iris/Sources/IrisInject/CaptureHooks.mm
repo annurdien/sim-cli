@@ -2,6 +2,7 @@
 #import <AVFoundation/AVFoundation.h>
 #import <QuartzCore/QuartzCore.h>
 #import <VideoToolbox/VideoToolbox.h>
+#import <CoreImage/CoreImage.h>
 #import <dispatch/dispatch.h>
 #import <objc/runtime.h>
 #import <os/lock.h>
@@ -25,6 +26,17 @@ struct InjectorState {
 
   NSHashTable<AVCaptureVideoPreviewLayer *> *previewLayers = nil;
 
+  // Metadata (barcode/face) delivery. The app never sees a real capture
+  // connection, so recognition runs here over the injected frames and the
+  // results are handed straight to its AVCaptureMetadataOutput delegate.
+  id<AVCaptureMetadataOutputObjectsDelegate> metadataDelegate = nil;
+  dispatch_queue_t metadataDelegateQueue = nullptr;
+  AVCaptureMetadataOutput *metadataOutput = nil;
+  NSArray<AVMetadataObjectType> *requestedMetadataTypes = nil;
+  dispatch_queue_t recognitionQueue = nullptr;
+  bool recognitionInFlight = false;
+  CFAbsoluteTime lastRecognition = 0;
+
   int32_t fps = 30;
   bool running = false;
   bool avSessionStarted = false;
@@ -35,6 +47,7 @@ InjectorState gState;
 void startDelivery(void);
 void stopDelivery(void);
 void deliverFrame(void);
+void runRecognition(CVPixelBufferRef pixelBuffer, CMTime time);
 
 void MSCAutoStartSessionIfNeeded(AVCaptureSession *session) {
   if (!session)
@@ -141,6 +154,116 @@ void swizzleClass(Class cls, SEL orig, SEL repl) {
 
   NSLog(@"[IrisInject] Captured delegate=%@ queue=%@", delegate, queue);
   [self iris_setSampleBufferDelegate:delegate queue:queue];
+}
+
+@end
+
+// MARK: - AVCaptureMetadataOutput (IrisHook)
+
+namespace {
+/// What we can actually synthesise in the Simulator.
+///
+/// Vision is unavailable there — every request fails with "Could not create
+/// inference context" (its ML models have no backing device), which rules out
+/// VNDetectBarcodesRequest and the full symbology set. Core Image's older
+/// CPU detectors do work, and they cover QR codes and faces. Advertise exactly
+/// those: apps intersect their requested types against this list, so claiming
+/// EAN/PDF417 here would just make them wait for callbacks that never come.
+NSArray<AVMetadataObjectType> *MSCSupportedMetadataTypes(void) {
+  static NSArray<AVMetadataObjectType> *types = nil;
+  static dispatch_once_t onceToken;
+  dispatch_once(&onceToken, ^{
+    types = @[ AVMetadataObjectTypeQRCode, AVMetadataObjectTypeFace ];
+  });
+  return types;
+}
+
+/// CIDetector construction is expensive; -featuresInImage: is thread-safe, so
+/// one detector per type is reused for the life of the process.
+CIDetector *MSCDetector(NSString *type) {
+  static NSMutableDictionary<NSString *, CIDetector *> *detectors = nil;
+  static os_unfair_lock detectorLock = OS_UNFAIR_LOCK_INIT;
+  static dispatch_once_t onceToken;
+  dispatch_once(&onceToken, ^{
+    detectors = [NSMutableDictionary dictionary];
+  });
+
+  os_unfair_lock_lock(&detectorLock);
+  CIDetector *detector = detectors[type];
+  if (!detector) {
+    detector = [CIDetector
+        detectorOfType:type
+               context:nil
+               options:@{CIDetectorAccuracy : CIDetectorAccuracyHigh}];
+    if (detector)
+      detectors[type] = detector;
+  }
+  os_unfair_lock_unlock(&detectorLock);
+  return detector;
+}
+
+/// Core Image works in pixels with a bottom-left origin; AVMetadataObject uses
+/// a 0-1 space with a top-left origin.
+CGRect MSCNormalisedBounds(CGRect rect, CGRect extent) {
+  if (CGRectIsEmpty(extent))
+    return CGRectZero;
+  return CGRectMake(rect.origin.x / extent.size.width,
+                    1.0 - CGRectGetMaxY(rect) / extent.size.height,
+                    rect.size.width / extent.size.width,
+                    rect.size.height / extent.size.height);
+}
+
+NSDictionary *MSCNormalisedCorner(CGPoint point, CGRect extent) {
+  if (CGRectIsEmpty(extent))
+    return @{};
+  CGPoint normalised = CGPointMake(point.x / extent.size.width,
+                                   1.0 - point.y / extent.size.height);
+  return (__bridge_transfer NSDictionary *)
+      CGPointCreateDictionaryRepresentation(normalised);
+}
+} // namespace
+
+@implementation AVCaptureMetadataOutput (IrisHook)
+
+- (void)iris_setMetadataObjectsDelegate:
+            (id<AVCaptureMetadataOutputObjectsDelegate>)delegate
+                                  queue:(dispatch_queue_t)queue {
+  os_unfair_lock_lock(&gState.lock);
+  gState.metadataDelegate = delegate;
+  gState.metadataDelegateQueue = queue ?: dispatch_get_main_queue();
+  gState.metadataOutput = self;
+  os_unfair_lock_unlock(&gState.lock);
+
+  NSLog(@"[IrisInject] Captured metadata delegate=%@ queue=%@", delegate, queue);
+  [self iris_setMetadataObjectsDelegate:delegate queue:queue];
+  startDelivery();
+}
+
+// Also deliberately NOT chained, and for the mirror-image reason to the setter
+// below: the real getter reports what the (absent) capture hardware supports,
+// which in the Simulator is an empty list — an app intersecting its wanted types
+// against that gets nothing and never attaches a scanner at all. What we can
+// actually synthesise is the honest answer here.
+- (NSArray<AVMetadataObjectType> *)iris_availableMetadataObjectTypes {
+  return MSCSupportedMetadataTypes();
+}
+
+- (void)iris_setMetadataObjectTypes:(NSArray<AVMetadataObjectType> *)types {
+  os_unfair_lock_lock(&gState.lock);
+  gState.requestedMetadataTypes = [types copy];
+  os_unfair_lock_unlock(&gState.lock);
+  NSLog(@"[IrisInject] Metadata types requested: %lu (%@)",
+        (unsigned long)types.count, [types componentsJoinedByString:@", "]);
+  // Deliberately NOT forwarded: the real setter validates against its own
+  // (empty) available list and raises NSInvalidArgumentException. The getter
+  // below answers from what was recorded here instead.
+}
+
+- (NSArray<AVMetadataObjectType> *)iris_metadataObjectTypes {
+  os_unfair_lock_lock(&gState.lock);
+  NSArray<AVMetadataObjectType> *types = gState.requestedMetadataTypes;
+  os_unfair_lock_unlock(&gState.lock);
+  return types ?: @[];
 }
 
 @end
@@ -366,6 +489,126 @@ void stopDelivery(void) {
   NSLog(@"[IrisInject] Delivery stopped");
 }
 
+/// Runs Core Image detectors over an injected frame and hands the results to
+/// the app's AVCaptureMetadataOutput delegate as synthesised metadata objects.
+///
+/// Throttled and single-flight: frames arrive at up to 120fps while detection
+/// costs milliseconds each, and nothing downstream benefits from scanning every
+/// one.
+void runRecognition(CVPixelBufferRef pixelBuffer, CMTime time) {
+  CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
+
+  // One lock region, every precondition and the claim together: reading the
+  // in-flight flag and setting it have to be atomic, or two frames arriving back
+  // to back can both observe "not in flight" and each enqueue a pass.
+  os_unfair_lock_lock(&gState.lock);
+  id<AVCaptureMetadataOutputObjectsDelegate> delegate = gState.metadataDelegate;
+  dispatch_queue_t delegateQueue = gState.metadataDelegateQueue;
+  AVCaptureMetadataOutput *output = gState.metadataOutput;
+  NSArray<AVMetadataObjectType> *requested = gState.requestedMetadataTypes;
+  dispatch_queue_t queue = gState.recognitionQueue;
+
+  bool wantsCodes = [requested containsObject:AVMetadataObjectTypeQRCode];
+  bool wantsFaces = [requested containsObject:AVMetadataObjectTypeFace];
+  bool claimed = delegate && delegateQueue && queue &&
+                 (wantsCodes || wantsFaces) && !gState.recognitionInFlight &&
+                 (now - gState.lastRecognition >= IRIS_RECOGNITION_INTERVAL);
+  if (claimed) {
+    gState.recognitionInFlight = true;
+    gState.lastRecognition = now;
+  }
+  os_unfair_lock_unlock(&gState.lock);
+
+  if (!claimed)
+    return;
+
+  CVPixelBufferRetain(pixelBuffer);
+  dispatch_async(queue, ^{
+    NSMutableArray<AVMetadataObject *> *objects = [NSMutableArray array];
+
+    @autoreleasepool {
+      CIImage *image = [CIImage imageWithCVPixelBuffer:pixelBuffer];
+      CGRect extent = image.extent;
+
+      if (wantsCodes) {
+        CIDetector *detector = MSCDetector(CIDetectorTypeQRCode);
+        for (CIFeature *feature in [detector featuresInImage:image]) {
+          if (![feature isKindOfClass:[CIQRCodeFeature class]])
+            continue;
+          CIQRCodeFeature *code = (CIQRCodeFeature *)feature;
+          if (code.messageString.length == 0)
+            continue;
+
+          NSArray<NSDictionary *> *corners = @[
+            MSCNormalisedCorner(code.topLeft, extent),
+            MSCNormalisedCorner(code.topRight, extent),
+            MSCNormalisedCorner(code.bottomRight, extent),
+            MSCNormalisedCorner(code.bottomLeft, extent),
+          ];
+          MSCFakeMachineReadableCodeObject *object =
+              [MSCFakeMachineReadableCodeObject
+                  objectWithType:AVMetadataObjectTypeQRCode
+                     stringValue:code.messageString
+                          bounds:MSCNormalisedBounds(code.bounds, extent)
+                         corners:corners
+                            time:time];
+          if (object)
+            [objects addObject:object];
+        }
+      }
+
+      if (wantsFaces) {
+        CIDetector *detector = MSCDetector(CIDetectorTypeFace);
+        NSInteger faceID = 1;
+        for (CIFeature *feature in [detector featuresInImage:image]) {
+          if (![feature isKindOfClass:[CIFaceFeature class]])
+            continue;
+          MSCFakeFaceObject *object = [MSCFakeFaceObject
+              objectWithFaceID:faceID++
+                        bounds:MSCNormalisedBounds(feature.bounds, extent)
+                          time:time];
+          if (object)
+            [objects addObject:object];
+        }
+      }
+    }
+
+    CVPixelBufferRelease(pixelBuffer);
+
+    os_unfair_lock_lock(&gState.lock);
+    gState.recognitionInFlight = false;
+    os_unfair_lock_unlock(&gState.lock);
+
+    if (objects.count == 0)
+      return;
+
+    NSLog(@"[IrisInject] Recognised %lu metadata object(s)",
+          (unsigned long)objects.count);
+
+    dispatch_async(delegateQueue, ^{
+      if ([delegate respondsToSelector:@selector(captureOutput:
+                                       didOutputMetadataObjects:fromConnection:)]) {
+        AVCaptureConnection *connection = output.connections.firstObject;
+        if (!connection) {
+          static MSCFakeConnection *fakeConnection = nil;
+          static dispatch_once_t onceToken;
+          dispatch_once(&onceToken, ^{
+            fakeConnection = (MSCFakeConnection *)class_createInstance(
+                [MSCFakeConnection class], 0);
+          });
+          connection = fakeConnection;
+        }
+        [delegate captureOutput:output
+            didOutputMetadataObjects:objects
+                      fromConnection:connection];
+      }
+      // Back into the pool only now the callback has returned — while it was
+      // running, these slots were exclusively the delegate's to read.
+      MSCReleasePooledMetadataObjects(objects);
+    });
+  });
+}
+
 void deliverFrame(void) {
   if (!gState.reader)
     return;
@@ -386,6 +629,10 @@ void deliverFrame(void) {
   CVPixelBufferRef pixelBuffer =
       CMSampleBufferGetImageBuffer((__bridge CMSampleBufferRef)arcSampleBuf);
   if (pixelBuffer) {
+    runRecognition(pixelBuffer,
+                   CMSampleBufferGetPresentationTimeStamp(
+                       (__bridge CMSampleBufferRef)arcSampleBuf));
+
     CGImageRef cgImage = NULL;
     if (VTCreateCGImageFromCVPixelBuffer(pixelBuffer, NULL, &cgImage) ==
             noErr &&
@@ -442,6 +689,8 @@ void deliverFrame(void) {
 void MSCInstallHooks(SharedFrameReader *reader, int32_t fps) {
   gState.deliveryQueue =
       dispatch_queue_create("com.iris.delivery", DISPATCH_QUEUE_SERIAL);
+  gState.recognitionQueue =
+      dispatch_queue_create("com.iris.recognition", DISPATCH_QUEUE_SERIAL);
   gState.reader = reader;
   gState.fps = fps;
   gState.factory = [[MSCSampleBufferFactory alloc] initWithFPS:fps];
@@ -465,6 +714,19 @@ void MSCInstallHooks(SharedFrameReader *reader, int32_t fps) {
   swizzleInstance([AVCaptureVideoDataOutput class],
                   @selector(setSampleBufferDelegate:queue:),
                   @selector(iris_setSampleBufferDelegate:queue:));
+
+  swizzleInstance([AVCaptureMetadataOutput class],
+                  @selector(setMetadataObjectsDelegate:queue:),
+                  @selector(iris_setMetadataObjectsDelegate:queue:));
+  swizzleInstance([AVCaptureMetadataOutput class],
+                  @selector(availableMetadataObjectTypes),
+                  @selector(iris_availableMetadataObjectTypes));
+  swizzleInstance([AVCaptureMetadataOutput class],
+                  @selector(setMetadataObjectTypes:),
+                  @selector(iris_setMetadataObjectTypes:));
+  swizzleInstance([AVCaptureMetadataOutput class],
+                  @selector(metadataObjectTypes),
+                  @selector(iris_metadataObjectTypes));
 
   Class layerCls = NSClassFromString(@"AVCaptureVideoPreviewLayer");
   if (layerCls) {
