@@ -212,6 +212,50 @@ flowchart LR
 
 The host app receives the delegate callbacks exactly as it would from a hardware camera.
 
+### Frame orientation
+
+A hardware camera is bolted into the device. Its buffers always arrive in the
+sensor's own orientation — landscape-right for a back-facing sensor — and the
+scene *inside* them turns as the device turns. Apps rely on that: they read the
+interface orientation and rotate by the matching quarter turns to get an upright
+picture.
+
+The host webcam is bolted to nothing, so its frames arrive already upright.
+Delivered as-is, the app's correction becomes the error:
+
+| Interface orientation | App's correction | Result without counter-rotation |
+| --- | --- | --- |
+| `landscapeLeft` | none | correct |
+| `portrait` | 90° clockwise | 90° out |
+| `portraitUpsideDown` | 90° anticlockwise | 90° out the other way |
+| `landscapeRight` | 180° | upside down |
+
+Those two landscape rows read backwards on purpose. `UIInterfaceOrientation`'s
+landscape constants are the mirror of the device orientations that produce them,
+so the sensor's native landscape — the row needing no correction — is the one
+UIKit calls `landscapeLeft`.
+
+So `SampleBufferFactory` counter-rotates by whatever the app is about to apply,
+and the two cancel. From outside, the injected device behaves like hardware.
+
+Two properties this preserves:
+
+- **Fixed dimensions.** The synthesised device advertises one `activeFormat`,
+  and a frame whose width and height swapped underneath it would contradict that
+  format. A rotated frame is scaled to cover the sensor rectangle and
+  centre-cropped — which is what a real sensor shows in portrait anyway: the
+  same optics over a narrower slice of the world.
+- **Zero-copy in the sensor's native landscape.** No turn is needed there, so the `IOSurface`
+  still reaches the app untouched. Only the rotated orientations pay for a
+  render, and those recycle a `CVPixelBufferPool` rather than allocating per
+  frame. Any failure falls through to the unrotated frame — a picture the wrong
+  way up beats no picture.
+
+`UIKit` is read only on the main thread, with the resulting quarter-turn count
+published to the delivery queue as an atomic. An orientation UIKit doesn't
+resolve (face up, unknown) leaves the last good value in place rather than
+snapping the picture to a default.
+
 ### Metadata objects (QR codes and faces)
 
 Apps that scan codes rarely read pixels themselves — they attach an
