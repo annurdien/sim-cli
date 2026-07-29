@@ -29,13 +29,18 @@
 /// Quarter turns clockwise a consumer applies for the current interface
 /// orientation. Matches AVFoundation's convention for a back-facing sensor,
 /// whose native orientation is landscape-right.
+///
+/// The device holding the sensor that way reports UIInterfaceOrientationLandscape
+/// *Left*: UIKit's landscape constants are the mirror of the device orientations
+/// that produce them. So the no-turn case below is the one whose name reads
+/// wrong, and pairing these up by name is what breaks it.
 static std::atomic<int> gConsumerQuarterTurns{0};
 
 static int MSCQuarterTurnsForOrientation(UIInterfaceOrientation orientation) {
     switch (orientation) {
-        case UIInterfaceOrientationLandscapeRight:      return 0;
+        case UIInterfaceOrientationLandscapeLeft:       return 0;
         case UIInterfaceOrientationPortrait:            return 1;
-        case UIInterfaceOrientationLandscapeLeft:       return 2;
+        case UIInterfaceOrientationLandscapeRight:      return 2;
         case UIInterfaceOrientationPortraitUpsideDown:  return 3;
         default:                                        return -1; // unknown
     }
@@ -220,8 +225,8 @@ static CGImagePropertyOrientation MSCInverseOrientation(int consumerQuarterTurns
         return nil;
     }
 
-    // Landscape-right needs no turn, which is the common case and stays
-    // zero-copy — the IOSurface goes to the app untouched.
+    // The sensor's native landscape needs no turn, which is the common case and
+    // stays zero-copy — the IOSurface goes to the app untouched.
     int turns = gConsumerQuarterTurns.load(std::memory_order_relaxed);
     if (turns != 0) {
         CVPixelBufferRef rotated = [self rotatedBuffer:pixBuf

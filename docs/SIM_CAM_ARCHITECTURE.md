@@ -225,10 +225,15 @@ Delivered as-is, the app's correction becomes the error:
 
 | Interface orientation | App's correction | Result without counter-rotation |
 | --- | --- | --- |
-| `landscapeRight` | none | correct |
+| `landscapeLeft` | none | correct |
 | `portrait` | 90° clockwise | 90° out |
 | `portraitUpsideDown` | 90° anticlockwise | 90° out the other way |
-| `landscapeLeft` | 180° | upside down |
+| `landscapeRight` | 180° | upside down |
+
+Those two landscape rows read backwards on purpose. `UIInterfaceOrientation`'s
+landscape constants are the mirror of the device orientations that produce them,
+so the sensor's native landscape — the row needing no correction — is the one
+UIKit calls `landscapeLeft`.
 
 So `SampleBufferFactory` counter-rotates by whatever the app is about to apply,
 and the two cancel. From outside, the injected device behaves like hardware.
@@ -240,7 +245,7 @@ Two properties this preserves:
   format. A rotated frame is scaled to cover the sensor rectangle and
   centre-cropped — which is what a real sensor shows in portrait anyway: the
   same optics over a narrower slice of the world.
-- **Zero-copy in landscape-right.** No turn is needed there, so the `IOSurface`
+- **Zero-copy in the sensor's native landscape.** No turn is needed there, so the `IOSurface`
   still reaches the app untouched. Only the rotated orientations pay for a
   render, and those recycle a `CVPixelBufferPool` rather than allocating per
   frame. Any failure falls through to the unrotated frame — a picture the wrong
