@@ -1,3 +1,5 @@
+
+
 # sim-cli
 
 [![Test and Build](https://github.com/annurdien/sim-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/annurdien/sim-cli/actions/workflows/ci.yml)
@@ -253,8 +255,8 @@ The repository's `config.yaml` file stores version metadata for the build system
 ```yaml
 app:
   name: "sim-cli"
-  version: "1.7.0"
-  description: "CLI tool to manage iOS simulators and Android emulators"
+  version: "1.8.1"
+  description: "CLI tool to manage iOS simulators and Android emulators."
 ```
 
 To release a new version, bump the `version` in `config.yaml` and commit with a message starting with `release:`.
